@@ -1,3 +1,6 @@
+# output
+dist
+
 # Prerequisites
 *.d
 
@@ -41,6 +44,8 @@
 *.su
 *.idb
 *.pdb
+*.build
+app_default.config
 
 # Kernel Module Compile Results
 *.mod*
