@@ -120,19 +120,58 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
 
     PR_INFO("app im network connected, init im...");
 
-    message_bus_init();
-    // http_proxy_init();
-    // telegram_bot_init();
-    // discord_bot_init();
-    feishu_bot_init();
+    char        mode_kv[16] = {0};
+    const char *mode        = IM_SECRET_CHANNEL_MODE;
+    if (im_kv_get_string(IM_NVS_BOT, IM_NVS_KEY_CHANNEL_MODE, mode_kv, sizeof(mode_kv)) == OPRT_OK &&
+        mode_kv[0] != '\0') {
+        mode = mode_kv;
+    }
+    PR_INFO("im channel_mode=%s", mode);
 
-    feishu_bot_start();
-    s_channel = IM_CHAN_FEISHU;
+    rt = message_bus_init();
+    if (rt != OPRT_OK) {
+        PR_ERR("message_bus_init failed rt:%d", rt);
+        return rt;
+    }
+
+    http_proxy_init();
+
+    if (strcmp(mode, IM_CHAN_TELEGRAM) == 0) {
+        rt = telegram_bot_init();
+        if (rt == OPRT_OK) {
+            rt = telegram_bot_start();
+        }
+        s_channel = IM_CHAN_TELEGRAM;
+    } else if (strcmp(mode, IM_CHAN_DISCORD) == 0) {
+        rt = discord_bot_init();
+        if (rt == OPRT_OK) {
+            rt = discord_bot_start();
+        }
+        s_channel = IM_CHAN_DISCORD;
+    } else if (strcmp(mode, IM_CHAN_FEISHU) == 0) {
+        rt = feishu_bot_init();
+        if (rt == OPRT_OK) {
+            rt = feishu_bot_start();
+        }
+        s_channel = IM_CHAN_FEISHU;
+    } else {
+        PR_WARN("unknown channel_mode '%s', fallback to %s", mode, IM_SECRET_CHANNEL_MODE);
+        rt = telegram_bot_init();
+        if (rt == OPRT_OK) {
+            rt = telegram_bot_start();
+        }
+        s_channel = IM_CHAN_TELEGRAM;
+    }
+
+    if (rt != OPRT_OK) {
+        PR_ERR("im bot start failed rt:%d (mode=%s)", rt, mode);
+        /* keep running loops so outbound/system messages still work */
+    }
 
     start_inbound_loop();
     start_outbound_dispatcher();
 
-    return rt;
+    return OPRT_OK;
 }
 
 OPERATE_RET app_im_init(void)

@@ -44,6 +44,7 @@
 #include "ducky_claw_chat.h"
 #include "reset_netcfg.h"
 #include "app_im.h"
+#include "cli/serial_cli.h"
 #include "tools_register.h"
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
@@ -64,6 +65,7 @@ tuya_iot_license_t license;
 
 static uint8_t _need_reset = 0;
 
+extern void tuya_app_cli_init(void);
 /**
  * @brief user defined log output api, in this demo, it will use uart0 as log-tx
  *
@@ -299,6 +301,8 @@ void user_main(void)
     tal_workq_init();
     tal_time_service_init();
     tal_cli_init();
+    tuya_app_cli_init();
+    serial_cli_init();
     tuya_authorize_init();
 
     reset_netconfig_start();
