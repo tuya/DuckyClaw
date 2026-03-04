@@ -43,27 +43,10 @@ static char s_chat_id[96] = {0};
 ***********************function define**********************
 ***********************************************************/
 
-static void inbound_loop_task(void *arg)
+void app_im_set_chat_id(const char *chat_id)
 {
-    (void)arg;
-    PR_INFO("inbound loop started");
-    while (1) {
-        im_msg_t in = {0};
-        if (message_bus_pop_inbound(&in, INBOUND_POLL_MS) != OPRT_OK) continue;
-        if (!in.content) continue;
-        strncpy(s_chat_id, in.chat_id, sizeof(s_chat_id) - 1);
-
-        // Step 1: upload to tuya agent
-        // ai_agent_send_text(in.content);
-
-#if defined(ENABLE_CHAT_DISPLAY) && (ENABLE_CHAT_DISPLAY == 1)
-        // Step 2: display on screen
-        ai_ui_disp_msg(AI_UI_DISP_USER_MSG, (uint8_t *)in.content, strlen(in.content));
-#endif
-        if (in.content) {
-            PR_INFO("inbound msg: %s", in.content);
-            tal_free(in.content);
-        }
+    if (chat_id) {
+        strncpy(s_chat_id, chat_id, sizeof(s_chat_id) - 1);
     }
 }
 
@@ -87,19 +70,6 @@ static void outbound_dispatch_task(void *arg)
         }
         tal_free(msg.content);
     }
-}
-
-static OPERATE_RET start_inbound_loop(void)
-{
-    if (s_inbound_thd) return OPRT_OK;
-    THREAD_CFG_T cfg = {0};
-    cfg.stackDepth = 8 * 1024;
-    cfg.priority   = THREAD_PRIO_1;
-    cfg.thrdname   = "inbound_loop";
-#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
-    cfg.psram_mode = 1;
-#endif
-    return tal_thread_create_and_start(&s_inbound_thd, NULL, NULL, inbound_loop_task, NULL, &cfg);
 }
 
 static OPERATE_RET start_outbound_dispatcher(void)
@@ -169,7 +139,6 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
         /* keep running loops so outbound/system messages still work */
     }
 
-    // start_inbound_loop();
     start_outbound_dispatcher();
 
     return OPRT_OK;

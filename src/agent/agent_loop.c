@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include "im_api.h"
+#include "app_im.h"
 #include "ai_agent.h"
 #include "ai_chat_main.h"
 #include "tuya_cloud_types.h"
@@ -91,6 +92,7 @@ static void agent_loop_task(void *arg)
         if (message_bus_pop_inbound(&in, UINT32_MAX) != OPRT_OK) continue;
         if (!in.content) continue;
         if (!s_total_prompt) continue;
+        app_im_set_chat_id(in.chat_id);
 
         PR_DEBUG("Agent loop task running: channel=%s, chat_id=%s, content=%s", in.channel, in.chat_id, in.content ? in.content : "");
 

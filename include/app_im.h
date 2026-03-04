@@ -29,6 +29,8 @@ extern "C" {
 ***********************************************************/
 OPERATE_RET app_im_init(void);
 
+void app_im_set_chat_id(const char *chat_id);
+
 OPERATE_RET app_im_bot_send_message(const char *message);
 
 #ifdef __cplusplus
