@@ -10,6 +10,7 @@
 
 #include "ai_chat_main.h"
 #include "ducky_claw_chat.h"
+#include "agent_loop.h"
 
 #include "app_im.h"
 #include "tal_log.h"
@@ -199,6 +200,9 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
         data_write_offset += text->datalen;
     } break;
     case AI_USER_EVT_TEXT_STREAM_STOP: {
+        /* Add assistant context to history */
+        build_current_context("assistant", (char *)stream_data);
+
         app_im_bot_send_message((char *)stream_data);
         memset(stream_data, 0, STREAM_DATA_MAX_LEN);
         data_write_offset = 0;

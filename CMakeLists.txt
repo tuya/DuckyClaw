@@ -15,6 +15,7 @@ aux_source_directory(${APP_PATH}/tools APP_SRCS)
 aux_source_directory(${APP_PATH}/cron_service APP_SRCS)
 aux_source_directory(${APP_PATH}/heartbeat APP_SRCS)
 aux_source_directory(${APP_PATH}/memory APP_SRCS)
+aux_source_directory(${APP_PATH}/src/agent APP_SRCS)
 
 # APP_INC
 set(APP_INC
@@ -23,6 +24,7 @@ set(APP_INC
     ${APP_PATH}/cron_service
     ${APP_PATH}/heartbeat
     ${APP_PATH}/memory
+    ${APP_PATH}/src/agent
 )
 
 ########################################
