@@ -8,6 +8,7 @@ set(IM_PATH ${CMAKE_CURRENT_LIST_DIR})
 
 set(IM_SRCS
     ${IM_PATH}/im_utils.c
+    ${IM_PATH}/cli/serial_cli.c
     ${IM_PATH}/bus/message_bus.c
     ${IM_PATH}/channels/telegram_bot.c
     ${IM_PATH}/channels/discord_bot.c
