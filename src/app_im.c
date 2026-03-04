@@ -134,7 +134,7 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
         return rt;
     }
 
-    http_proxy_init();
+    //http_proxy_init();
 
     if (strcmp(mode, IM_CHAN_TELEGRAM) == 0) {
         rt = telegram_bot_init();
