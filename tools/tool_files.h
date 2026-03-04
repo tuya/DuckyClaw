@@ -16,7 +16,11 @@
 #include "tal_fs.h"
 
 #ifndef CLAW_USE_SDCARD
+#if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
+#define CLAW_USE_SDCARD 0
+#else
 #define CLAW_USE_SDCARD 1
+#endif
 #endif
 
 #if defined(CLAW_USE_SDCARD) && (CLAW_USE_SDCARD == 1)
@@ -43,10 +47,17 @@ extern "C" {
 
 /* Filesystem root path macros */
 #if defined(CLAW_USE_SDCARD) && (CLAW_USE_SDCARD == 1)
-#define CLAW_FS_ROOT_PATH     "/sdcard"
-#define CLAW_FS_MOUNT_PATH    "/sdcard"
+#define CLAW_FS_ROOT_PATH          "/sdcard"
+#define CLAW_FS_MOUNT_PATH         "/sdcard"
+#define CLAW_FS_ROOT_PATH_EMPTY    0
 #else
-#define CLAW_FS_ROOT_PATH     "/spiffs"
+#if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
+#define CLAW_FS_ROOT_PATH          ""
+#define CLAW_FS_ROOT_PATH_EMPTY    1
+#else
+#define CLAW_FS_ROOT_PATH          "/spiffs"
+#define CLAW_FS_ROOT_PATH_EMPTY    0
+#endif
 #endif
 
 /* Default config file paths */
@@ -93,8 +104,8 @@ extern "C" {
 #define claw_dir_is_regular tal_dir_is_regular
 #endif
 
-#define claw_malloc    tal_malloc
-#define claw_free      tal_free
+#define claw_malloc    tal_psram_malloc
+#define claw_free      tal_psram_free
 
 /***********************************************************
 ********************function declaration********************
