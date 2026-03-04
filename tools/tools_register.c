@@ -13,6 +13,8 @@
 #include "tool_cron.h"
 #include "cron_service.h"
 #include "heartbeat.h"
+#include "memory_manager.h"
+#include "session_manager.h"
 
 #include "tal_api.h"
 
@@ -34,6 +36,10 @@ static OPERATE_RET __ai_mcp_init(void *data)
     /* Initialize and start heartbeat service */
     TUYA_CALL_ERR_LOG(heartbeat_init());
     TUYA_CALL_ERR_LOG(heartbeat_start());
+
+    /* Initialize memory and session managers */
+    TUYA_CALL_ERR_LOG(memory_manager_init());
+    TUYA_CALL_ERR_LOG(session_manager_init());
 
     /* Register file operation tools */
     TUYA_CALL_ERR_RETURN(tool_files_register());

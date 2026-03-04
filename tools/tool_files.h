@@ -73,20 +73,24 @@ extern "C" {
 #define claw_dir_close tkl_dir_close
 #define claw_dir_read  tkl_dir_read
 #define claw_dir_name  tkl_dir_name
-#define claw_fs_mkdir  tkl_fs_mkdir
-#define claw_fs_mount  tkl_fs_mount
+#define claw_fs_mkdir       tkl_fs_mkdir
+#define claw_fs_mount       tkl_fs_mount
+#define claw_fs_remove      tkl_fs_remove
+#define claw_dir_is_regular tkl_dir_is_regular
 #else
-#define claw_fopen     tal_fopen
-#define claw_fclose    tal_fclose
-#define claw_fread     tal_fread
-#define claw_fwrite    tal_fwrite
-#define claw_fgets     tal_fgets
-#define claw_fgetsize  tal_fgetsize
-#define claw_dir_open  tal_dir_open
-#define claw_dir_close tal_dir_close
-#define claw_dir_read  tal_dir_read
-#define claw_dir_name  tal_dir_name
-#define claw_fs_mkdir  tal_fs_mkdir
+#define claw_fopen          tal_fopen
+#define claw_fclose         tal_fclose
+#define claw_fread          tal_fread
+#define claw_fwrite         tal_fwrite
+#define claw_fgets          tal_fgets
+#define claw_fgetsize       tal_fgetsize
+#define claw_dir_open       tal_dir_open
+#define claw_dir_close      tal_dir_close
+#define claw_dir_read       tal_dir_read
+#define claw_dir_name       tal_dir_name
+#define claw_fs_mkdir       tal_fs_mkdir
+#define claw_fs_remove      tal_fs_remove
+#define claw_dir_is_regular tal_dir_is_regular
 #endif
 
 #define claw_malloc    tal_malloc
