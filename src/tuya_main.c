@@ -44,6 +44,7 @@
 #include "ducky_claw_chat.h"
 #include "reset_netcfg.h"
 #include "app_im.h"
+#include "tools_register.h"
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
 #include "qrencode_print.h"
@@ -353,6 +354,11 @@ void user_main(void)
     ret = app_im_init();
     if (ret != OPRT_OK) {
         PR_ERR("app_im_init failed rt:%d", ret);
+    }
+
+    ret = tool_registry_init();
+    if (ret != OPRT_OK) {
+        PR_ERR("tool_registry_init failed rt:%d", ret);
     }
 
     /* Start tuya iot task */
