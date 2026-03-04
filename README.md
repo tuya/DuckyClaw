@@ -1,10 +1,5 @@
-# DuckyClaw
-
-[![GitHub Stars](https://img.shields.io/github/stars/tuya/DuckyClaw?style=flat&logo=github)](https://github.com/tuya/DuckyClaw/stargazers)
-
-
-
 # DuckyClaw: Hardware-Driven OpenClaw Project
+
 DuckyClaw is a hardware oriented version of the OpenClaw. The Ideas is to explore the physical hardware with the powerful concept of OpenClaw agents.
 
 ## Deployable to Hardware
