@@ -47,6 +47,7 @@
 #include "cli/serial_cli.h"
 #include "tools_register.h"
 #include "ws_server.h"
+#include "agent_loop.h"
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
 #include "qrencode_print.h"
@@ -282,7 +283,7 @@ void user_main(void)
     cJSON_InitHooks(&(cJSON_Hooks){.malloc_fn = tal_malloc, .free_fn = tal_free});
 #endif
 
-    tal_log_init(TAL_LOG_LEVEL_DEBUG, 1024, (TAL_LOG_OUTPUT_CB)tkl_log_output);
+    tal_log_init(TAL_LOG_LEVEL_DEBUG, 16*1024, (TAL_LOG_OUTPUT_CB)tkl_log_output);
 
     PR_NOTICE("Application information:");
     PR_NOTICE("Project name:        %s", PROJECT_NAME);
@@ -369,6 +370,11 @@ void user_main(void)
     ret = tool_registry_init();
     if (ret != OPRT_OK) {
         PR_ERR("tool_registry_init failed rt:%d", ret);
+    }
+
+    ret = agent_loop_init();
+    if (ret != OPRT_OK) {
+        PR_ERR("agent_loop_init failed rt:%d", ret);
     }
 
     /* Start tuya iot task */

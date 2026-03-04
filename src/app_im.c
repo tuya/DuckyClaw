@@ -54,11 +54,12 @@ static void inbound_loop_task(void *arg)
         strncpy(s_chat_id, in.chat_id, sizeof(s_chat_id) - 1);
 
         // Step 1: upload to tuya agent
-        ai_agent_send_text(in.content);
+        // ai_agent_send_text(in.content);
 
+#if defined(ENABLE_CHAT_DISPLAY) && (ENABLE_CHAT_DISPLAY == 1)
         // Step 2: display on screen
         ai_ui_disp_msg(AI_UI_DISP_USER_MSG, (uint8_t *)in.content, strlen(in.content));
-
+#endif
         if (in.content) {
             PR_INFO("inbound msg: %s", in.content);
             tal_free(in.content);
@@ -168,7 +169,7 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
         /* keep running loops so outbound/system messages still work */
     }
 
-    start_inbound_loop();
+    // start_inbound_loop();
     start_outbound_dispatcher();
 
     return OPRT_OK;
@@ -188,7 +189,13 @@ OPERATE_RET app_im_bot_send_message(const char *message)
 
     im_msg_t out = {0};
     strncpy(out.channel, s_channel, sizeof(out.channel) - 1);
-    strncpy(out.chat_id, s_chat_id, sizeof(out.chat_id) - 1);
+
+    if (s_chat_id[0] == '\0') {
+        return OPRT_INVALID_PARM;
+    } else{
+        strncpy(out.chat_id, s_chat_id, sizeof(out.chat_id) - 1);
+    }
+
     PR_DEBUG("app im bot send message: channel=%s, chat_id=%s", out.channel, out.chat_id);
 
     out.content = tal_psram_malloc(strlen(message) + 1);

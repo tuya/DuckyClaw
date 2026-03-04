@@ -14,6 +14,7 @@
 
 #include "tal_api.h"
 #include "cJSON.h"
+#include "tkl_fs.h"
 
 #include <string.h>
 #include <stdlib.h>
