@@ -106,7 +106,10 @@ DuckyClaw is inspired by the vision of making personal AI accessible, practical,
   Native control and management of Tuya IoT smart devices directly from the agent.
 
 - **Music Playback & Audio Features:**  
-  Built-in music player. Audio input via Automatic Speech Recognition (ASR) *(in progress)*.
+  Built-in music player. 
+
+- **Hardware Voice ASR**
+  Audio input with Automatic Speech Recognition (ASR) 
 
 - **MCP Device Tools:**  
   - **CRON Tool MCP:** Scheduled device tasks and heartbeating.
