@@ -87,6 +87,7 @@ extern "C" {
 #define claw_fs_mkdir       tkl_fs_mkdir
 #define claw_fs_mount       tkl_fs_mount
 #define claw_fs_remove      tkl_fs_remove
+#define claw_fs_is_exist    tkl_fs_is_exist
 #define claw_dir_is_regular tkl_dir_is_regular
 #else
 #define claw_fopen          tal_fopen
@@ -101,6 +102,7 @@ extern "C" {
 #define claw_dir_name       tal_dir_name
 #define claw_fs_mkdir       tal_fs_mkdir
 #define claw_fs_remove      tal_fs_remove
+#define claw_fs_is_exist    tal_fs_is_exist
 #define claw_dir_is_regular tal_dir_is_regular
 #endif
 

@@ -15,6 +15,7 @@
 #include "heartbeat.h"
 #include "memory_manager.h"
 #include "session_manager.h"
+#include "skill_loader.h"
 
 #include "tal_api.h"
 
@@ -40,6 +41,9 @@ static OPERATE_RET __ai_mcp_init(void *data)
     /* Initialize memory and session managers */
     TUYA_CALL_ERR_LOG(memory_manager_init());
     TUYA_CALL_ERR_LOG(session_manager_init());
+
+    /* Initialize skill loader (creates dir + installs built-in skills) */
+    TUYA_CALL_ERR_LOG(skill_loader_init());
 
     /* Register file operation tools */
     TUYA_CALL_ERR_RETURN(tool_files_register());
