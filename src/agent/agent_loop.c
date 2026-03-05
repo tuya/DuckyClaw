@@ -25,7 +25,7 @@
 ***********************************************************/
 #define DUCKY_CLAW_AGENT_STACK   (4*1024)
 
-#define DUCKY_CLAW_CONTEXT_BUF_SIZE        (4 * 1024)
+#define DUCKY_CLAW_CONTEXT_BUF_SIZE        (16 * 1024)
 
 #define DUCKY_CLAW_HISTORY_MAX_COUNT 10
 
@@ -89,7 +89,7 @@ static void agent_loop_task(void *arg)
     PR_DEBUG("Agent loop task started");
     while (1) {
         tal_system_sleep(100);
-        
+
         im_msg_t in = {0};
         if (message_bus_pop_inbound(&in, UINT32_MAX) != OPRT_OK) continue;
         if (!in.content) continue;

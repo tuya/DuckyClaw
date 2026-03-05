@@ -21,7 +21,7 @@
 #if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
 #define CLAW_USE_SDCARD 0
 #else
-#define CLAW_USE_SDCARD 0
+#define CLAW_USE_SDCARD 1
 #endif
 #endif
 
