@@ -110,7 +110,7 @@ DuckyClaw is inspired by the vision of making personal AI accessible, practical,
 
 ## 🏛️ Architecture
 
-![Architecture](https://images.tuyacn.com/fe-static/docs/img/5f408897-2151-4f2f-9f22-216391a14f58.jpg)
+![Architecture](https://images.tuyacn.com/fe-static/docs/img/62c1ad75-9f01-4911-9d30-c7bac463faec.png)
 
 The DuckyClaw architecture combines local device agents and cloud agents under a unified system. At its core, it uses the TuyaOpen AI-Agent framework to handle messaging, automation, and control. Local hardware (like Raspberry Pi, ESP32, or Linux devices) runs its own Claw like loop agent, able to communicate directly with your devices via IoT and hardware interfaces. 
 
