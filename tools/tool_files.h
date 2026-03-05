@@ -62,8 +62,8 @@ extern "C" {
 
 /* Default config file paths */
 #define CLAW_CONFIG_DIR        CLAW_FS_ROOT_PATH "/config"
-#define CLAW_USER_CONFIG_PATH  CLAW_CONFIG_DIR "/user.md"
-#define CLAW_AGENT_CONFIG_PATH CLAW_CONFIG_DIR "/agent.md"
+#define SOUL_FILE              CLAW_CONFIG_DIR "/SOUL.md"
+#define USER_FILE              CLAW_CONFIG_DIR "/USER.md"
 
 /**
  * Unified macro redefinitions for filesystem interfaces.

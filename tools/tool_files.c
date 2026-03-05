@@ -396,12 +396,12 @@ OPERATE_RET tool_files_fs_init(void)
 
     /* Create default config files */
     TUYA_CALL_ERR_LOG(
-        __create_default_file(CLAW_USER_CONFIG_PATH,
+        __create_default_file(USER_FILE,
                               "# User Config\n"));
 
     TUYA_CALL_ERR_LOG(
-        __create_default_file(CLAW_AGENT_CONFIG_PATH,
-                              "# Agent Config\n"));
+        __create_default_file(SOUL_FILE,
+                              "# Soul Config\n"));
 
     PR_DEBUG("Filesystem initialized, root: %s", CLAW_FS_ROOT_PATH);
     return OPRT_OK;
