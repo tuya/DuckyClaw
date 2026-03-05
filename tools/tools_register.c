@@ -27,6 +27,11 @@ static OPERATE_RET __ai_mcp_init(void *data)
 {
     OPERATE_RET rt = OPRT_OK;
 
+    rt = ai_mcp_server_init("DuckyClaw MCP Server", "1.0");
+    if (rt != OPRT_OK) {
+        return rt;
+    }
+
     /* Initialize filesystem (mount SD card if needed, create default files) */
     TUYA_CALL_ERR_RETURN(tool_files_fs_init());
 
@@ -51,6 +56,9 @@ static OPERATE_RET __ai_mcp_init(void *data)
     /* Register cron tools */
     TUYA_CALL_ERR_RETURN(tool_cron_register());
 
+    /* Register exec/system tools */
+    TUYA_CALL_ERR_RETURN(tool_exec_register());
+    
     PR_DEBUG("MCP Server initialized successfully with tools");
     return rt;
 }
