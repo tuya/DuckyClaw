@@ -283,7 +283,7 @@ void user_main(void)
     cJSON_InitHooks(&(cJSON_Hooks){.malloc_fn = tal_malloc, .free_fn = tal_free});
 #endif
 
-    tal_log_init(TAL_LOG_LEVEL_DEBUG, 16*1024, (TAL_LOG_OUTPUT_CB)tkl_log_output);
+    tal_log_init(TAL_LOG_LEVEL_DEBUG, 1*1024, (TAL_LOG_OUTPUT_CB)tkl_log_output);
 
     PR_NOTICE("Application information:");
     PR_NOTICE("Project name:        %s", PROJECT_NAME);
