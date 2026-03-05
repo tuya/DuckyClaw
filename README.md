@@ -126,6 +126,7 @@ The DuckyClaw architecture combines local device agents and cloud agents under a
 
 ```shell
 git clone https://github.com/tuya/DuckyClaw.git
+git submodule update --init
 ```
 
 ### Development
