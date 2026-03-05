@@ -120,27 +120,85 @@ DuckyClaw is inspired by the vision of making personal AI accessible, practical,
 The DuckyClaw architecture combines local device agents and cloud agents under a unified system. At its core, it uses the TuyaOpen AI-Agent framework to handle messaging, automation, and control. Local hardware (like Raspberry Pi, ESP32, or Linux devices) runs its own Claw like loop agent, able to communicate directly with your devices via IoT and hardware interfaces. 
 
 
-## 🚀 Quick Start [TODO]
+## 🚀 Quick Start
 
 ### Install
-[TODO]
 
-### Run
-[TODO]
+```shell
+git clone https://github.com/tuya/DuckyClaw.git
+```
 
 ### Development
 - Tuya T5 MCU Guide: [TODO]
 - Raspberry Pi Guide: [TODO]
-- Linux: [TODO]
 - ESP32 MCU Guide: [TODO]
 
 
 ## 🔌 Plugin/Skills Development
 
-- Skills development guide: [TODO]
+**Skill format**: Skills are `.md` files in the `skills/` directory. The agent gets a summary of them and follows the instructions. Use this structure:
+
+```markdown
+# Skill Title
+
+One-line description.
+
+## When to use
+When the user asks about X / when Y happens.
+
+## How to use
+1. Call tool_A with ...
+2. Then call tool_B ...
+3. Reply with ...
+
+## Example
+User: "…" → use get_current_time, then web_search "…", then reply "…"
+```
+
+Add skills: put a new `name.md` in the skills dir (e.g. via the `write_file` tool), or add built-ins in `skills/skill_loader.c`. See existing skills there for examples.
 
 ## 📁 Project Structure
-- [TODO]
+
+```
+DuckyClaw/
+├── agent/                 # Agent core logic
+│   ├── agent_loop.c/h     # Claw-style agent loop (reasoning, tool calls, context)
+│   └── context_builder.c/h # Dialogue and system context building
+├── config/                # Board/platform configs (Kconfig selection)
+│   ├── TUYA_T5AI_BOARD_LCD_3.5_CAMERA.config  # Tuya T5AI dev board
+│   ├── RaspberryPi.config                     # Raspberry Pi
+│   └── ESP32S3_BREAD_COMPACT_WIFI.config      # ESP32-S3
+├── heartbeat/             # Scheduled heartbeat and keepalive
+│   └── heartbeat.c/h
+├── IM/                    # Unified messaging layer (message bus + channels)
+│   ├── bus/               # Message bus (message_bus)
+│   ├── channels/          # Telegram / Discord / Feishu channels
+│   ├── proxy/             # HTTP proxy (TLS, cloud connectivity)
+│   ├── cli/               # Serial/local CLI
+│   ├── certs/             # Certificates and TLS config
+│   ├── im_api.h / im_platform.h / im_config.h
+│   └── README.md          # IM component docs
+├── include/               # App-level public headers
+│   ├── app_im.h / ducky_claw_chat.h / tuya_app_config.h
+│   └── reset_netcfg.h
+├── memory/                # Persistent memory and sessions
+│   ├── memory_manager.c/h # Agent.txt, memory.txt, IoT memory, etc.
+│   └── session_manager.c/h
+├── src/                   # App entry and business logic
+│   ├── tuya_app_main.c    # TuyaOpen app entry, init, event loop
+│   ├── ducky_claw_chat.c  # Chat flow, device/cloud agent dispatch
+│   ├── app_im.c           # IM–Agent bridge
+│   ├── cli_cmd.c          # CLI and config (auth, IM setup, etc.)
+│   └── reset_netcfg.c     # Network config reset
+├── tools/                 # MCP-style device tools
+│   ├── tool_cron.c/h      # CRON scheduling and heartbeat
+│   ├── tool_files.c/h     # FILE operations
+│   ├── tools_register.c/h # Tool registration and dispatch
+│   └── Kconfig
+├── dist/                  # Build output (e.g. DuckyClaw_1.0.x)
+├── app_default.config     # Default Kconfig
+└── TuyaOpen/              # TuyaOpen C SDK submodule (platform, drivers, cloud, AI, etc.)
+```
 
 
 ## 🐛 Issues
