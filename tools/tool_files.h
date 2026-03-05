@@ -13,6 +13,7 @@
 
 #include "tuya_cloud_types.h"
 #include "ai_mcp_server.h"
+#include "tal_api.h"
 #include "tal_fs.h"
 
 #ifndef CLAW_USE_SDCARD
