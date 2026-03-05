@@ -96,6 +96,43 @@
     "- Include specific tool calls the agent should use\n"                   \
     "- Test by asking the agent to use the new skill\n"
 
+#define BUILTIN_WATCH_FOR_VISITOR                                            \
+    "# Watch for visitor\n"                                                  \
+    "\n"                                                                     \
+    "Periodically check the camera for visitors. Uses cron to run every "    \
+    "30 seconds until the user says to stop. Each run must use "             \
+    "device_camera_take_photo to get the latest image.\n"                     \
+    "\n"                                                                     \
+    "## When to use\n"                                                       \
+    "When the user asks to watch for someone coming (e.g. \"watch for "     \
+    "visitors\", \"tell me when someone arrives\"). Stop when the user "    \
+    "says to stop (e.g. \"stop watching\", \"cancel\", \"stop checking\").\n" \
+    "\n"                                                                     \
+    "## How to use\n"                                                        \
+    "1. **Start watching**: Call cron_add with:\n"                           \
+    "   - name: \"watch-for-visitor\"\n"                                      \
+    "   - schedule_type: \"every\"\n"                                        \
+    "   - interval_s: 30\n"                                                  \
+    "   - message: A short instruction that when the job fires, the agent "   \
+    "must call device_camera_take_photo to get the latest image, then "       \
+    "determine whether a person is present; if yes, tell the user.\n"        \
+    "   Example message: \"[Watch for visitor] Call device_camera_take_photo, " \
+    "check the image for a person; if someone is present, tell the user.\"\n" \
+    "2. Confirm to the user that watching has started (every 30s).\n"       \
+    "3. **Stop watching**: When the user says to stop, call cron_list, "     \
+    "find the job whose name is \"watch-for-visitor\", note its id, then "    \
+    "call cron_remove with that job_id. Tell the user watching has stopped.\n" \
+    "\n"                                                                     \
+    "## Example\n"                                                           \
+    "User: \"Watch for visitors\"\n"                                         \
+    "-> cron_add(name=\"watch-for-visitor\", schedule_type=\"every\", "       \
+    "interval_s=30, message=...)\n"                                         \
+    "-> Reply: Started checking the camera every 30 seconds; I will tell " \
+    "you if someone arrives.\n"                                             \
+    "User: \"Stop watching\"\n"                                               \
+    "-> cron_list, find job watch-for-visitor, cron_remove(job_id)\n"        \
+    "-> Reply: Watching has stopped.\n"
+
 /* ------------------------------------------------------------------ */
 
 typedef struct {
@@ -104,9 +141,10 @@ typedef struct {
 } builtin_skill_t;
 
 static const builtin_skill_t s_builtins[] = {
-    {"weather",        BUILTIN_WEATHER       },
-    {"daily-briefing", BUILTIN_DAILY_BRIEFING},
-    {"skill-creator",  BUILTIN_SKILL_CREATOR },
+    {"weather",           BUILTIN_WEATHER           },
+    {"daily-briefing",    BUILTIN_DAILY_BRIEFING    },
+    {"skill-creator",     BUILTIN_SKILL_CREATOR     },
+    {"watch-for-visitor", BUILTIN_WATCH_FOR_VISITOR },
 };
 
 #define NUM_BUILTINS ((int)(sizeof(s_builtins) / sizeof(s_builtins[0])))
