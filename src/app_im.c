@@ -167,7 +167,11 @@ OPERATE_RET app_im_bot_send_message(const char *message)
 
     PR_DEBUG("app im bot send message: channel=%s, chat_id=%s", out.channel, out.chat_id);
 
+#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
     out.content = tal_psram_malloc(strlen(message) + 1);
+#else
+    out.content = tal_malloc(strlen(message) + 1);
+#endif
     if (!out.content) {
         return OPRT_MALLOC_FAILED;
     }

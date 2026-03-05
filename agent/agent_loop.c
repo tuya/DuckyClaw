@@ -157,7 +157,11 @@ int agent_loop_start_cb(void *data)
     im_msg_t in = {0};
     strncpy(in.channel, "system", sizeof(in.channel) - 1);
     strncpy(in.chat_id, "", sizeof(in.chat_id) - 1);
+#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
     in.content = tal_psram_malloc(strlen(GREETING_MESSAGE) + 1);
+#else
+    in.content = tal_malloc(strlen(GREETING_MESSAGE) + 1);
+#endif
     if (!in.content) {
         return OPRT_MALLOC_FAILED;
     }
@@ -177,7 +181,11 @@ OPERATE_RET agent_loop_init(void)
     }
 
     if (!s_total_prompt) {
+#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
         s_total_prompt = tal_psram_malloc(DUCKY_CLAW_CONTEXT_BUF_SIZE);
+#else
+        s_total_prompt = tal_malloc(DUCKY_CLAW_CONTEXT_BUF_SIZE);
+#endif
         if (!s_total_prompt) {
             return OPRT_MALLOC_FAILED;
         }

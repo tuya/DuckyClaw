@@ -102,8 +102,13 @@ extern "C" {
 #define claw_dir_is_regular tal_dir_is_regular
 #endif
 
+#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
 #define claw_malloc    tal_psram_malloc
 #define claw_free      tal_psram_free
+#else
+#define claw_malloc    tal_malloc
+#define claw_free      tal_free
+#endif
 
 /***********************************************************
 ********************function declaration********************

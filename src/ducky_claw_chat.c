@@ -172,7 +172,11 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
     switch (event->type) {
     case AI_USER_EVT_TEXT_STREAM_START: {
         if (stream_data == NULL) {
+#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
             stream_data = tal_psram_malloc(STREAM_DATA_MAX_LEN);
+#else
+            stream_data = tal_malloc(STREAM_DATA_MAX_LEN);
+#endif
             if (stream_data == NULL) {
                 PR_ERR("Failed to allocate stream data memory");
                 return;
