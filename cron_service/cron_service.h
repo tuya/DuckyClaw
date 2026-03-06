@@ -31,7 +31,7 @@ extern "C" {
 
 /* Cron check interval in milliseconds (60 seconds) */
 #ifndef CLAW_CRON_CHECK_INTERVAL_MS
-#define CLAW_CRON_CHECK_INTERVAL_MS (60 * 1000)
+#define CLAW_CRON_CHECK_INTERVAL_MS (10 * 1000)
 #endif
 
 /***********************************************************
