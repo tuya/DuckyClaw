@@ -226,6 +226,6 @@ This project is build on top of this amazing hardware AIoT OS call TuyaOpen.
 
 This project is created by [TuyaOpen Team](https://tuyaopen.ai/), with the help of awesome [contributors](https://github.com/tuya/DuckyClaw/graphs/contributors)
 
-[![contributors](https://contrib.rocks/image?repo=tuya/DuckyClaw)](https://github.com/warengonzaga/tinyclaw/graphs/contributors)
+[![contributors](https://contrib.rocks/image?repo=tuya/DuckyClaw)](https://github.com/tuya/duckyclaw/graphs/contributors)
 
 ---
