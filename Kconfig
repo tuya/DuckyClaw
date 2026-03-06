@@ -1,11 +1,6 @@
 menu "configure app (DuckyClaw) "
 
-config TUYA_PRODUCT_ID
-    string "product ID of project"
-    default "xxxxxxxxxxxxxxxx"
-
 rsource "TuyaOpen/apps/tuya.ai/ai_components/Kconfig"
-
 rsource "./cron_service/Kconfig"
 rsource "./gateway/Kconfig"
 rsource "./IM/Kconfig"

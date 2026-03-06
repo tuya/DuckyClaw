@@ -14,13 +14,12 @@
 extern "C" {
 #endif
 
-// TODO: PID Copy Link
-#ifndef TUYA_PRODUCT_ID
+// https://pbt.tuya.com/s?p=dd46368ae3840e54f018b2c45dc1550b&u=c38c8fc0a5d14c4f66cae9f0cfcb2a24&t=2
 #define TUYA_PRODUCT_ID "xxxxxxxxxxxxxxxx"
-#endif
 
+// https://platform.tuya.com/purchase/index?type=6
 #define TUYA_OPENSDK_UUID    "uuidxxxxxxxxxxxxxxxx"             // Please change the correct uuid
-#define TUYA_OPENSDK_AUTHKEY "keyxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // Please change the correct authkey
+#define TUYA_OPENSDK_AUTHKEY "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // Please change the correct authkey
 
 // IM configuration
 // feishu | telegram | discord
@@ -29,10 +28,10 @@ extern "C" {
 #define IM_SECRET_FS_APP_ID         ""
 #define IM_SECRET_FS_APP_SECRET     ""
 
+#define IM_SECRET_TG_TOKEN          ""
+
 #define IM_SECRET_DC_TOKEN          ""
 #define IM_SECRET_DC_CHANNEL_ID     ""
-
-#define IM_SECRET_TG_TOKEN          ""
 
 #ifdef __cplusplus
 }
