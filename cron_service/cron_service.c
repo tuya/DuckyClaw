@@ -32,6 +32,13 @@
 #define CRON_THREAD_STACK (6 * 1024)
 #endif
 
+/*
+ * Threshold in seconds beyond which a one-shot job is considered overdue.
+ * A job is naturally up to one check-interval late due to the sleep between
+ * checks, so anything beyond two intervals is flagged as a delayed fire.
+ */
+#define CRON_OVERDUE_THRESHOLD_S  (CLAW_CRON_CHECK_INTERVAL_MS / 1000 * 2)
+
 /***********************************************************
 ***********************variable define**********************
 ***********************************************************/
@@ -264,36 +271,74 @@ static OPERATE_RET cron_save_jobs(void)
 }
 
 /**
- * @brief Process all due cron jobs
+ * cron_process_due_jobs - Check and fire all due cron jobs.
  *
- * Checks each enabled job and fires it if current time >= next_run.
- * Uses ai_agent_send_text to inject the job message to the AI agent.
+ * Three-way logic per job:
+ *   1. Not yet due (scheduled time in the future) → skip.
+ *   2. Overdue (AT job whose scheduled time passed beyond CRON_OVERDUE_THRESHOLD_S
+ *      and has never been executed) → report to AI, disable job, let AI call
+ *      cron_remove after confirming with the user.
+ *   3. Reached reminder time (within normal window) → send reminder message to AI,
+ *      then delete (or disable) the job.
  */
 static void cron_process_due_jobs(void)
 {
-    int64_t now     = cron_now_epoch();
-    bool    changed = false;
-    PR_NOTICE("corn_get_now_epoch: %llu, job count: %d", now, s_job_count);
+    bool changed = false;
 
-    /* Skip if time not synced (still 1970) */
-    if (now < 1000000000LL) {
+    /* Abort if device clock is not synced yet */
+    int64_t check_now = cron_now_epoch();
+    PR_NOTICE("cron_now_epoch: %lld, job count: %d", (long long)check_now, s_job_count);
+    if (check_now < 1000000000LL) {
         return;
     }
 
     for (int i = 0; i < s_job_count; i++) {
+        int64_t now = cron_now_epoch();
+
         cron_job_t *job = &s_jobs[i];
-        if (!job->enabled || job->next_run <= 0 || job->next_run > now) {
+        if (!job->enabled) {
             continue;
         }
 
-        PR_INFO("Cron firing: %s (%s)", job->name, job->id);
+        /* Determine reference epoch: AT jobs use at_epoch, EVERY jobs use next_run */
+        int64_t due_epoch = (job->kind == CRON_KIND_AT) ? job->at_epoch : job->next_run;
 
-        /* Send message to AI agent */
-        OPERATE_RET rt = ai_agent_send_text(job->message);
-        if (rt != OPRT_OK) {
-            PR_WARN("Failed to send cron message rt=%d", rt);
+        /* Case 1: Not yet due → skip */
+        if (due_epoch <= 0 || due_epoch > now) {
+            PR_DEBUG("cron skip: '%s' due=%lld now=%lld", job->name,
+                     (long long)due_epoch, (long long)now);
+            continue;
         }
 
+        /* Case 2 (AT only): Overdue — scheduled time passed beyond threshold, never run */
+        if (job->kind == CRON_KIND_AT) {
+            int64_t late_secs = now - job->at_epoch;
+            bool is_overdue   = (late_secs > (int64_t)CRON_OVERDUE_THRESHOLD_S)
+                                && (job->last_run == 0);
+
+            if (is_overdue) {
+                PR_WARN("Cron overdue: '%s' (%s) missed by %llds", job->name, job->id,
+                        (long long)late_secs);
+                char msg[512];
+                snprintf(msg, sizeof(msg),
+                         "[Task Overdue] Task '%s' (id=%s) was scheduled at epoch %lld "
+                         "but missed its trigger window by %llds. "
+                         "Please inform the user that this reminder was not delivered on time, "
+                         "and ask whether to delete or reschedule it. "
+                         "To delete, call cron_remove with job_id='%s'.",
+                         job->name, job->id, (long long)job->at_epoch,
+                         (long long)late_secs, job->id);
+                (void)ai_agent_send_text(msg);
+                /* Disable so it is not reported again on the next check */
+                job->enabled = false;
+                changed = true;
+                continue;
+            }
+        }
+
+        /* Case 3: Reached reminder time → remind user, then delete/reschedule */
+        PR_INFO("Cron firing: '%s' (%s)", job->name, job->id);
+        (void)ai_agent_send_text(job->message);
         job->last_run = now;
 
         if (job->kind == CRON_KIND_AT) {
@@ -311,7 +356,6 @@ static void cron_process_due_jobs(void)
         } else {
             job->next_run = now + job->interval_s;
         }
-
         changed = true;
     }
 

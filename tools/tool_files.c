@@ -18,6 +18,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 /***********************************************************
 ************************macro define************************
@@ -325,6 +326,183 @@ static OPERATE_RET __tool_list_dir(const MCP_PROPERTY_LIST_T *properties,
 }
 
 /**
+ * __str_to_lower - Copy src into dst, converting ASCII to lowercase.
+ * @dst:      Output buffer.
+ * @dst_size: Size of dst including NUL.
+ * @src:      Input string.
+ */
+static void __str_to_lower(char *dst, size_t dst_size, const char *src)
+{
+    size_t i = 0;
+    for (; i < dst_size - 1 && src[i]; i++) {
+        dst[i] = (char)tolower((unsigned char)src[i]);
+    }
+    dst[i] = '\0';
+}
+
+/**
+ * __find_in_dir - List all entries in dir_path, record matches, and enqueue
+ *                subdirectories for further scanning.
+ *
+ * @dir_path:  Absolute path to the directory to scan (must end without '/').
+ * @query_lo:  Lowercase search keyword.
+ * @buf:       Output accumulation buffer.
+ * @buf_size:  Size of buf.
+ * @offset:    Current write position in buf (updated in-place).
+ * @found:     Match counter (updated in-place).
+ * @queue:     Array of char pointers used as a BFS directory queue.
+ * @q_head:    BFS queue head index.
+ * @q_tail:    BFS queue tail index (updated in-place).
+ * @max_queue: Maximum number of entries in queue.
+ */
+static void __find_in_dir(const char *dir_path, const char *query_lo,
+                           char *buf, size_t buf_size, size_t *offset, int *found,
+                           char **queue, int q_head, int *q_tail, int max_queue)
+{
+    TUYA_DIR dir = NULL;
+    if (claw_dir_open(dir_path, &dir) != OPRT_OK || !dir) {
+        return;
+    }
+
+    for (;;) {
+        TUYA_FILEINFO info = NULL;
+        if (claw_dir_read(dir, &info) != OPRT_OK || !info) {
+            break;
+        }
+
+        const char *entry_name = NULL;
+        if (claw_dir_name(info, &entry_name) != OPRT_OK || !entry_name) {
+            continue;
+        }
+
+        /* Skip . and .. */
+        if (strcmp(entry_name, ".") == 0 || strcmp(entry_name, "..") == 0) {
+            continue;
+        }
+
+        /* Build full path */
+        char full_path[256];
+        size_t dp_len = strlen(dir_path);
+        if (dp_len + 1 + strlen(entry_name) >= sizeof(full_path)) {
+            continue;
+        }
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry_name);
+
+        /* Case-insensitive substring match in either direction */
+        char name_lo[128];
+        __str_to_lower(name_lo, sizeof(name_lo), entry_name);
+
+        if (strstr(name_lo, query_lo) || strstr(query_lo, name_lo)) {
+            if (*offset < buf_size - 4) {
+                *offset += snprintf(buf + *offset, buf_size - *offset,
+                                    "- %s\n", full_path);
+                (*found)++;
+            }
+        }
+
+        /* Try to open as directory; if it succeeds, enqueue for BFS */
+        if (*q_tail < max_queue) {
+            TUYA_DIR subdir = NULL;
+            if (claw_dir_open(full_path, &subdir) == OPRT_OK && subdir) {
+                claw_dir_close(subdir);
+                char *qpath = claw_malloc(strlen(full_path) + 1);
+                if (qpath) {
+                    strcpy(qpath, full_path);
+                    queue[(*q_tail)++] = qpath;
+                }
+            }
+        }
+    }
+
+    claw_dir_close(dir);
+}
+
+/**
+ * @brief MCP tool callback: find_path
+ *
+ * Recursively searches the device filesystem for files or directories whose
+ * names contain the given keyword (case-insensitive, substring match).
+ * Searches start from CLAW_FS_ROOT_PATH up to a fixed BFS depth so that
+ * the correct path can be discovered even when the caller provides a
+ * misspelled name or an entirely wrong directory prefix.
+ *
+ * Properties:
+ * - name (string, required): Filename keyword to search for
+ *
+ * @return OPERATE_RET OPRT_OK on success
+ */
+static OPERATE_RET __tool_find_path(const MCP_PROPERTY_LIST_T *properties,
+                                    MCP_RETURN_VALUE_T *ret_val, void *user_data)
+{
+#define FIND_PATH_BUF_SIZE  2048
+#define FIND_PATH_MAX_QUEUE 24
+
+    const char *name_query = __get_str_property(properties, "name");
+    if (!name_query || strlen(name_query) == 0) {
+        ai_mcp_return_value_set_str(ret_val, "Error: name parameter is required");
+        return OPRT_INVALID_PARM;
+    }
+
+    char query_lo[128];
+    __str_to_lower(query_lo, sizeof(query_lo), name_query);
+
+    char *result = (char *)claw_malloc(FIND_PATH_BUF_SIZE);
+    if (!result) {
+        return OPRT_MALLOC_FAILED;
+    }
+
+    size_t offset = 0;
+    offset += snprintf(result + offset, FIND_PATH_BUF_SIZE - offset,
+                       "Search results for '%s' under " CLAW_FS_ROOT_PATH ":\n", name_query);
+
+    /* BFS queue */
+    char *queue[FIND_PATH_MAX_QUEUE] = {0};
+    int q_head = 0, q_tail = 0;
+    int found  = 0;
+
+    /* Seed the queue with the filesystem root */
+    char *root_copy = claw_malloc(strlen(CLAW_FS_ROOT_PATH) + 1);
+    if (!root_copy) {
+        claw_free(result);
+        return OPRT_MALLOC_FAILED;
+    }
+    strcpy(root_copy, CLAW_FS_ROOT_PATH);
+    queue[q_tail++] = root_copy;
+
+    while (q_head < q_tail) {
+        char *dir = queue[q_head++];
+        __find_in_dir(dir, query_lo,
+                      result, FIND_PATH_BUF_SIZE, &offset, &found,
+                      queue, q_head, &q_tail, FIND_PATH_MAX_QUEUE);
+        claw_free(dir);
+    }
+
+    /* Free any queue entries that were never dequeued (queue overflow guard) */
+    while (q_head < q_tail) {
+        claw_free(queue[q_head++]);
+    }
+
+    if (found == 0) {
+        offset += snprintf(result + offset, FIND_PATH_BUF_SIZE - offset,
+                           "No matches found for '%s'.\n"
+                           "Tip: use list_dir to browse directories.\n",
+                           name_query);
+    } else {
+        offset += snprintf(result + offset, FIND_PATH_BUF_SIZE - offset,
+                           "Found %d match(es).\n", found);
+    }
+
+    ai_mcp_return_value_set_str(ret_val, result);
+    claw_free(result);
+
+    PR_DEBUG("find_path name=%s found=%d", name_query, found);
+    return OPRT_OK;
+
+#undef FIND_PATH_BUF_SIZE
+#undef FIND_PATH_MAX_QUEUE
+}
+
+/**
  * @brief Create a file with default content if it does not exist
  *
  * @param path File path to create
@@ -472,6 +650,21 @@ OPERATE_RET tool_files_register(void)
         __tool_list_dir,
         NULL,
         MCP_PROP_STR_DEF("prefix", "Directory path to list, defaults to " CLAW_FS_ROOT_PATH, CLAW_FS_ROOT_PATH "/")
+    ));
+
+    /* find_path tool */
+    TUYA_CALL_ERR_RETURN(AI_MCP_TOOL_ADD(
+        "find_path",
+        "Recursively search the device filesystem for files or directories whose\n"
+        "name contains the given keyword (case-insensitive, substring match).\n"
+        "Use this tool when you are unsure of the exact path or spelling of a file.\n"
+        "Parameters:\n"
+        "- name (string, required): Filename keyword to search for.\n"
+        "Response:\n"
+        "- Returns a list of matching paths under " CLAW_FS_ROOT_PATH ".",
+        __tool_find_path,
+        NULL,
+        MCP_PROP_STR("name", "Filename keyword to search for (case-insensitive substring match)")
     ));
 
     PR_DEBUG("File operation MCP tools registered successfully");

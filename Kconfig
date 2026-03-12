@@ -1,6 +1,6 @@
 menu "configure app (DuckyClaw) "
 
-rsource "TuyaOpen/apps/tuya.ai/ai_components/Kconfig"
+rsource "./ai_components/Kconfig"
 rsource "./cron_service/Kconfig"
 rsource "./gateway/Kconfig"
 rsource "./IM/Kconfig"
