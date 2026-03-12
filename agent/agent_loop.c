@@ -1,7 +1,25 @@
 /**
  * @file agent_loop.c
- * @brief Agent main loop: builds context, dispatches to AI, handles tool retry.
- * @version 0.2
+ * @brief Agent main loop: synchronous inner tool-use loop modelled after
+ *        the mimiclaw reference implementation.
+ *
+ * Design (mirrors mimiclaw/agent/agent_loop.c):
+ *
+ *   outer loop: wait for inbound user message
+ *   inner loop (up to TOOL_LOOP_MAX iterations):
+ *     1. Build system prompt + history + current content
+ *     2. Send to cloud AI (ai_agent_send_text)
+ *     3. BLOCK on s_turn.sem until cloud AI finishes (STREAM_STOP fires)
+ *     4. If a tool was called this iteration → continue inner loop
+ *        (tool result already recorded in history by __on_tool_executed)
+ *     5. If no tool called → final response, forward to IM, break
+ *
+ * The semaphore (s_turn.sem) is posted by agent_loop_notify_turn_done(),
+ * which is called from ducky_claw_chat.c on AI_USER_EVT_TEXT_STREAM_STOP.
+ * The tool hook (__on_tool_executed) sets s_turn.tool_called = true and
+ * records the result string in s_turn.tool_result[] for the next iteration.
+ *
+ * @version 0.4
  * @copyright Copyright (c) 2021-2026 Tuya Inc. All Rights Reserved.
  */
 
@@ -11,8 +29,9 @@
 #include "cJSON.h"
 #include "tal_api.h"
 #include "tal_mutex.h"
-#include "tuya_ai_client.h"
+#include "tal_semaphore.h"
 #include <stdint.h>
+#include <string.h>
 
 #include "im_api.h"
 #include "app_im.h"
@@ -37,25 +56,29 @@
 #define DUCKY_CLAW_HISTORY_MAX_COUNT  10
 #endif
 
-/* Channel name used to identify automatic tool-retry messages in the loop */
-#define TOOL_RETRY_CHANNEL  "tool_retry"
+/* Maximum inner-loop iterations per user turn (mirrors MIMI_AGENT_MAX_TOOL_ITER) */
+#define TOOL_LOOP_MAX   10
 
-/* Maximum number of automatic retries per conversation turn */
-#define TOOL_RETRY_MAX      10
+/* Timeout waiting for cloud AI to finish one round (ms) */
+#define TURN_WAIT_MS    30000
+
+/* Buffer size for a single tool result string */
+#define TOOL_RESULT_BUF_SIZE  512
 
 /***********************************************************
 ***********************typedef define***********************
 ***********************************************************/
 
-/** Tracks per-turn tool retry state. */
+/**
+ * Per-turn state shared between agent_loop_task (consumer) and the
+ * STREAM_STOP callback / tool hook (producers).
+ */
 typedef struct {
-    int          count;  /* Retry attempts consumed this turn */
-    MUTEX_HANDLE lock;
-} tool_retry_ctx_t;
-
-/***********************************************************
-********************function declaration********************
-***********************************************************/
+    SEM_HANDLE   sem;           /* Posted when cloud AI finishes one round  */
+    MUTEX_HANDLE lock;          /* Guards tool_called / tool_result         */
+    bool         tool_called;   /* Set by __on_tool_executed                */
+    char         tool_result[TOOL_RESULT_BUF_SIZE]; /* Last tool summary    */
+} turn_state_t;
 
 /***********************************************************
 ***********************variable define**********************
@@ -65,126 +88,91 @@ static THREAD_HANDLE s_agent_loop_thread = NULL;
 static char *s_total_prompt = NULL;
 
 static MUTEX_HANDLE s_history_mutex = NULL;
-static cJSON *s_history_json = NULL;
+static cJSON       *s_history_json  = NULL;
 
-static tool_retry_ctx_t s_retry_ctx = {0};
+static turn_state_t s_turn = {0};
+
+/* Buffer holding the last complete AI text stream, set by
+ * agent_loop_set_last_response() called from ducky_claw_chat.c on STREAM_STOP.
+ * The inner loop forwards it to IM when no tool was called. */
+#define LAST_RESPONSE_MAX  (16 * 1024)
+static char        *s_last_response      = NULL;
+static MUTEX_HANDLE s_last_response_lock = NULL;
+
+/* True while the inner loop is active (i.e. we are in a tool-use iteration).
+ * ducky_claw_chat.c uses this to suppress mid-stream overflow flushes. */
+static volatile bool s_in_tool_loop = false;
 
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
 
-/**
- * __oprt_to_str - Map an OPERATE_RET code to a human-readable string.
- * @rt: Error code to map.
- *
- * Return: A constant string describing the error, or "unknown error".
- */
 static const char *__oprt_to_str(OPERATE_RET rt)
 {
     switch (rt) {
-    case OPRT_OK:                       return "success";
-    case OPRT_COM_ERROR:                return "common error";
-    case OPRT_INVALID_PARM:             return "invalid parameter";
-    case OPRT_MALLOC_FAILED:            return "memory allocation failed";
-    case OPRT_NOT_SUPPORTED:            return "not supported";
-    case OPRT_NETWORK_ERROR:            return "network error";
-    case OPRT_NOT_FOUND:                return "not found";
-    case OPRT_TIMEOUT:                  return "timeout";
-    case OPRT_FILE_NOT_FIND:            return "file not found";
-    case OPRT_FILE_OPEN_FAILED:         return "file open failed";
-    case OPRT_FILE_READ_FAILED:         return "file read failed";
-    case OPRT_FILE_WRITE_FAILED:        return "file write failed";
-    case OPRT_NOT_EXIST:                return "not exist";
-    case OPRT_BUFFER_NOT_ENOUGH:        return "buffer not enough";
-    case OPRT_RESOURCE_NOT_READY:       return "resource not ready";
-    case OPRT_EXCEED_UPPER_LIMIT:       return "exceed upper limit";
-    default:                            return "unknown error";
+    case OPRT_OK:                   return "success";
+    case OPRT_COM_ERROR:            return "common error";
+    case OPRT_INVALID_PARM:         return "invalid parameter";
+    case OPRT_MALLOC_FAILED:        return "memory allocation failed";
+    case OPRT_NOT_SUPPORTED:        return "not supported";
+    case OPRT_NETWORK_ERROR:        return "network error";
+    case OPRT_NOT_FOUND:            return "not found";
+    case OPRT_TIMEOUT:              return "timeout";
+    case OPRT_FILE_NOT_FIND:        return "file not found";
+    case OPRT_FILE_OPEN_FAILED:     return "file open failed";
+    case OPRT_FILE_READ_FAILED:     return "file read failed";
+    case OPRT_FILE_WRITE_FAILED:    return "file write failed";
+    case OPRT_NOT_EXIST:            return "not exist";
+    case OPRT_BUFFER_NOT_ENOUGH:    return "buffer not enough";
+    case OPRT_RESOURCE_NOT_READY:   return "resource not ready";
+    case OPRT_EXCEED_UPPER_LIMIT:   return "exceed upper limit";
+    default:                        return "unknown error";
     }
 }
 
 /**
- * __push_tool_retry_msg - Push an automatic retry message into the inbound queue.
- * @reason: Formatted failure description from the hook callback.
+ * __on_tool_executed - MCP tool execution hook.
  *
- * Injects a "tool_retry" channel message so agent_loop_task picks it up on the
- * next iteration and re-sends the context (with failure history) to the AI.
- */
-static void __push_tool_retry_msg(const char *reason)
-{
-    if (!reason) {
-        return;
-    }
-
-    const char *prefix = "Previous tool call failed, please analyze and retry. Reason: ";
-    size_t len = strlen(prefix) + strlen(reason) + 1;
-
-    im_msg_t retry_msg = {0};
-    strncpy(retry_msg.channel, TOOL_RETRY_CHANNEL, sizeof(retry_msg.channel) - 1);
-
-#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
-    retry_msg.content = tal_psram_malloc(len);
-#else
-    retry_msg.content = tal_malloc(len);
-#endif
-    if (!retry_msg.content) {
-        PR_ERR("Failed to alloc retry message buffer");
-        return;
-    }
-
-    snprintf(retry_msg.content, len, "%s%s", prefix, reason);
-    message_bus_push_inbound(&retry_msg);
-    PR_INFO("Tool retry message queued (attempt %d/%d)", s_retry_ctx.count, TOOL_RETRY_MAX);
-}
-
-/**
- * __on_tool_executed - MCP tool execution hook called after every tool call.
- * @tool_name: Name of the executed tool.
- * @rt:        Return code from the tool callback.
- * @ret_val:   Tool return value (valid only when rt == OPRT_OK, freed after return).
- * @user_data: Unused.
- *
- * Formats a one-line summary of the tool result, appends it to the conversation
- * history, and – on failure – automatically pushes a retry message into the
- * inbound queue up to TOOL_RETRY_MAX times per conversation turn.
+ * Called synchronously after every cloud-AI-initiated tool call.
+ * Records the result in conversation history and in s_turn.tool_result
+ * so the inner loop can include it in the next prompt iteration.
  */
 static void __on_tool_executed(const char *tool_name, OPERATE_RET rt,
                                 const MCP_RETURN_VALUE_T *ret_val, void *user_data)
 {
-#define TOOL_RESULT_BUF_SIZE 512
-
-    char buf[TOOL_RESULT_BUF_SIZE];
-    int  offset = 0;
-
     if (!tool_name) {
         return;
     }
 
-    offset += snprintf(buf + offset, TOOL_RESULT_BUF_SIZE - offset,
-                       "Tool \"%s\" executed: %s (code=%d)",
-                       tool_name, __oprt_to_str(rt), rt);
+    char buf[TOOL_RESULT_BUF_SIZE];
+    int  off = 0;
+
+    off += snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                    "Tool \"%s\": %s (code=%d)",
+                    tool_name, __oprt_to_str(rt), rt);
 
     if (rt == OPRT_OK && ret_val) {
         switch (ret_val->type) {
         case MCP_RETURN_TYPE_BOOLEAN:
-            snprintf(buf + offset, TOOL_RESULT_BUF_SIZE - offset,
+            snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
                      ", result=%s", ret_val->bool_val ? "true" : "false");
             break;
         case MCP_RETURN_TYPE_INTEGER:
-            snprintf(buf + offset, TOOL_RESULT_BUF_SIZE - offset,
+            snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
                      ", result=%d", ret_val->int_val);
             break;
         case MCP_RETURN_TYPE_STRING:
             if (ret_val->str_val) {
-                snprintf(buf + offset, TOOL_RESULT_BUF_SIZE - offset,
-                         ", result=%.200s", ret_val->str_val);
+                snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                         ", result=%.300s", ret_val->str_val);
             }
             break;
         case MCP_RETURN_TYPE_JSON:
             if (ret_val->json_val) {
                 char *s = cJSON_PrintUnformatted(ret_val->json_val);
                 if (s) {
-                    snprintf(buf + offset, TOOL_RESULT_BUF_SIZE - offset,
-                             ", result=%.200s", s);
+                    snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                             ", result=%.300s", s);
                     cJSON_free(s);
                 }
             }
@@ -196,176 +184,242 @@ static void __on_tool_executed(const char *tool_name, OPERATE_RET rt,
 
     PR_DEBUG("Tool exec hook: %s", buf);
 
-    /* Always write the result into conversation history */
+    /* Record in sliding-window history */
     build_current_context("tool", buf);
 
-    /* On failure: push an automatic retry message if under the per-turn limit */
-    if (rt != OPRT_OK && s_retry_ctx.lock) {
-        tal_mutex_lock(s_retry_ctx.lock);
-        if (s_retry_ctx.count < TOOL_RETRY_MAX) {
-            s_retry_ctx.count++;
-            tal_mutex_unlock(s_retry_ctx.lock);
-            __push_tool_retry_msg(buf);
-        } else {
-            tal_mutex_unlock(s_retry_ctx.lock);
-            PR_WARN("Tool retry limit reached (%d/%d), skipping auto-retry",
-                    TOOL_RETRY_MAX, TOOL_RETRY_MAX);
-        }
+    /* Signal the inner loop that a tool was called this round */
+    if (s_turn.lock) {
+        tal_mutex_lock(s_turn.lock);
+        s_turn.tool_called = true;
+        strncpy(s_turn.tool_result, buf, TOOL_RESULT_BUF_SIZE - 1);
+        s_turn.tool_result[TOOL_RESULT_BUF_SIZE - 1] = '\0';
+        tal_mutex_unlock(s_turn.lock);
     }
-
-#undef TOOL_RESULT_BUF_SIZE
 }
 
 /**
- * build_current_context - Append a role/content pair to the shared history array.
- * @role:    Sender role string (e.g. "user", "assistant", "tool").
- * @content: Message content.
- *
- * Trims the oldest entry when the history exceeds DUCKY_CLAW_HISTORY_MAX_COUNT.
- * Thread-safe via s_history_mutex.
- *
- * Return: OPRT_OK on success, error code otherwise.
+ * build_current_context - Append a role/content pair to the shared history.
  */
 OPERATE_RET build_current_context(const char *role, const char *content)
 {
-    OPERATE_RET rt = OPRT_OK;
-
-    if (s_history_mutex == NULL || s_history_json == NULL) {
+    if (!s_history_mutex || !s_history_json) {
         return OPRT_INVALID_PARM;
     }
 
     tal_mutex_lock(s_history_mutex);
 
-    cJSON *current_json = cJSON_CreateObject();
-    if (!current_json) {
+    cJSON *entry = cJSON_CreateObject();
+    if (!entry) {
         tal_mutex_unlock(s_history_mutex);
         return OPRT_MALLOC_FAILED;
     }
 
-    /* Drop the oldest entry to stay within the sliding window */
-    int history_count = cJSON_GetArraySize(s_history_json);
-    if (history_count >= DUCKY_CLAW_HISTORY_MAX_COUNT) {
+    int count = cJSON_GetArraySize(s_history_json);
+    if (count >= DUCKY_CLAW_HISTORY_MAX_COUNT) {
         cJSON_DeleteItemFromArray(s_history_json, 0);
     }
 
-    cJSON_AddStringToObject(current_json, "role", role);
-    cJSON_AddStringToObject(current_json, "content", content);
-
-    cJSON_AddItemToArray(s_history_json, current_json);
+    cJSON_AddStringToObject(entry, "role", role);
+    cJSON_AddStringToObject(entry, "content", content);
+    cJSON_AddItemToArray(s_history_json, entry);
 
     tal_mutex_unlock(s_history_mutex);
-
-    return rt;
+    return OPRT_OK;
 }
 
 /**
- * agent_loop_task - Main agent loop thread function.
+ * agent_loop_in_tool_loop - Returns true while the inner tool loop is active.
  *
- * Blocks on the inbound message queue.  For each message:
- *   1. Resets the per-turn retry counter when the message is user-initiated
- *      (channel != TOOL_RETRY_CHANNEL).
- *   2. Builds a system prompt from context, sliding-window history, and the
- *      incoming message content.
- *   3. Sends the prompt to the cloud AI via ai_agent_send_text().
- *   4. Records the user/retry message in history.
+ * Used by ducky_claw_chat.c to suppress intermediate IM flushes.
+ */
+bool agent_loop_in_tool_loop(void)
+{
+    return s_in_tool_loop;
+}
+
+/**
+ * agent_loop_set_last_response - Store the completed AI text stream.
  *
- * When a tool fails, __on_tool_executed() pushes a TOOL_RETRY_CHANNEL message
- * back into the queue (up to TOOL_RETRY_MAX times), causing this loop to
- * re-send with the failure reason included in the history.
+ * Called by ducky_claw_chat.c on AI_USER_EVT_TEXT_STREAM_STOP before
+ * calling agent_loop_notify_turn_done().  The inner loop reads this to
+ * forward the final response to IM.
+ */
+void agent_loop_set_last_response(const char *text)
+{
+    if (!s_last_response || !s_last_response_lock || !text) {
+        return;
+    }
+    tal_mutex_lock(s_last_response_lock);
+    strncpy(s_last_response, text, LAST_RESPONSE_MAX - 1);
+    s_last_response[LAST_RESPONSE_MAX - 1] = '\0';
+    tal_mutex_unlock(s_last_response_lock);
+}
+
+/**
+ * agent_loop_notify_turn_done - Called by ducky_claw_chat.c on STREAM_STOP.
+ *
+ * Posts the semaphore so the blocked inner loop can proceed to the next
+ * iteration check.
+ */
+void agent_loop_notify_turn_done(void)
+{
+    if (s_turn.sem) {
+        tal_semaphore_post(s_turn.sem);
+    }
+}
+
+/**
+ * __build_and_send - Build the full prompt and send it to the cloud AI.
+ *
+ * @content:  Current message content to append (user text or tool result).
+ * @is_tool:  True when content is a tool result (uses different section header).
+ */
+static void __build_and_send(const char *content, bool is_tool)
+{
+    memset(s_total_prompt, 0, DUCKY_CLAW_CONTEXT_BUF_SIZE);
+    size_t off = context_build_system_prompt(s_total_prompt, DUCKY_CLAW_CONTEXT_BUF_SIZE);
+    if (off == 0) {
+        PR_ERR("context_build_system_prompt failed");
+        return;
+    }
+
+    /* Append sliding-window history */
+    tal_mutex_lock(s_history_mutex);
+    int count = cJSON_GetArraySize(s_history_json);
+    if (count > 0) {
+        off += snprintf(s_total_prompt + off, DUCKY_CLAW_CONTEXT_BUF_SIZE - off,
+                        "\r\n\n# Recent Memory History\r\n");
+        for (int j = 0; j < count; j++) {
+            cJSON      *e    = cJSON_GetArrayItem(s_history_json, j);
+            const char *role = cJSON_GetStringValue(cJSON_GetObjectItem(e, "role"));
+            const char *text = cJSON_GetStringValue(cJSON_GetObjectItem(e, "content"));
+            if (role && text) {
+                off += snprintf(s_total_prompt + off, DUCKY_CLAW_CONTEXT_BUF_SIZE - off,
+                                "\n- %s: %s", role, text);
+            }
+        }
+    }
+    tal_mutex_unlock(s_history_mutex);
+
+    /* Append current content */
+    const char *header = is_tool
+        ? "\n\n# Tool Execution Result\n"
+          "The following tool was just executed. Review the result:\n"
+          "- SUCCESS and correct → provide your final answer to the user.\n"
+          "- FAILURE or incorrect → analyze and retry the tool with corrected parameters.\n"
+          "- Need another tool → call it now.\n"
+          "Tool result:\n"
+        : "\n\n# User Content\r\n";
+
+    size_t needed = strlen(content) + strlen(header) + 1;
+    if (off + needed > DUCKY_CLAW_CONTEXT_BUF_SIZE) {
+        PR_ERR("Prompt buffer overflow");
+        return;
+    }
+    off += snprintf(s_total_prompt + off, DUCKY_CLAW_CONTEXT_BUF_SIZE - off,
+                    "%s%s", header, content);
+
+    PR_DEBUG("Sending prompt (len=%u, is_tool=%d): %.200s ...", (unsigned)off, is_tool, s_total_prompt);
+    ai_agent_send_text(s_total_prompt);
+}
+
+/**
+ * agent_loop_task - Outer loop: wait for user message, run inner tool loop.
+ *
+ * Mirrors mimiclaw's agent_loop_task structure:
+ *   outer: pop inbound message
+ *   inner: send → wait → check tool_called → repeat or finish
  */
 static void agent_loop_task(void *arg)
 {
     PR_DEBUG("Agent loop task started");
+
     while (1) {
         im_msg_t in = {0};
         if (message_bus_pop_inbound(&in, UINT32_MAX) != OPRT_OK) {
             continue;
         }
-        if (!in.content) {
-            continue;
-        }
-        if (!s_total_prompt) {
+        if (!in.content || !s_total_prompt) {
             tal_free(in.content);
             continue;
         }
 
-        /* Preserve the original chat_id across tool retries.
-         * Tool retry messages carry an empty chat_id; updating s_chat_id
-         * with an empty string would cause subsequent replies to be dropped. */
         if (in.chat_id[0] != '\0') {
             app_im_set_chat_id(in.chat_id);
         }
 
-        PR_DEBUG("Agent loop: channel=%s chat_id=%s content=%.80s",
-                 in.channel, in.chat_id, in.content);
+        PR_INFO("===== AGENT TURN START channel=%s =====", in.channel);
+        PR_DEBUG("user input: %.80s", in.content);
 
-        /* Reset the retry counter for every new user-initiated turn */
-        bool is_retry = (strcmp(in.channel, TOOL_RETRY_CHANNEL) == 0);
-        if (!is_retry && s_retry_ctx.lock) {
-            tal_mutex_lock(s_retry_ctx.lock);
-            s_retry_ctx.count = 0;
-            tal_mutex_unlock(s_retry_ctx.lock);
-        }
+        /* Record user message in history */
+        build_current_context("user", in.content);
 
-        /* 1. Build base system prompt */
-        memset(s_total_prompt, 0, DUCKY_CLAW_CONTEXT_BUF_SIZE);
-        size_t system_prompt_len = context_build_system_prompt(s_total_prompt,
-                                                               DUCKY_CLAW_CONTEXT_BUF_SIZE);
-        if (system_prompt_len == 0) {
-            PR_ERR("context_build_system_prompt failed");
-            tal_free(in.content);
-            continue;
-        }
+        /* ---- Inner tool loop (mirrors mimiclaw while iteration < MAX) ---- */
+        int  iteration  = 0;
+        bool tool_loop  = false;   /* true after first tool call */
+        char *cur_content = in.content;
 
-        /* 2. Append sliding-window history (includes tool results and retries) */
-        tal_mutex_lock(s_history_mutex);
-        int history_count = cJSON_GetArraySize(s_history_json);
-        if (history_count > 0) {
-            system_prompt_len += snprintf(
-                s_total_prompt + system_prompt_len,
-                DUCKY_CLAW_CONTEXT_BUF_SIZE - system_prompt_len,
-                "\r\n\n# Recent Memory History\r\n");
+        s_in_tool_loop = false;
 
-            for (int j = 0; j < history_count; j++) {
-                cJSON *entry = cJSON_GetArrayItem(s_history_json, j);
-                if (!entry) {
-                    continue;
-                }
-                const char *role    = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "role"));
-                const char *content = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "content"));
-                system_prompt_len += snprintf(
-                    s_total_prompt + system_prompt_len,
-                    DUCKY_CLAW_CONTEXT_BUF_SIZE - system_prompt_len,
-                    "\n- %s: %s", role, content);
+        while (iteration < TOOL_LOOP_MAX) {
+            PR_INFO("--- LLM call iteration=%d ---", iteration + 1);
+
+            /* Reset per-round tool state */
+            if (s_turn.lock) {
+                tal_mutex_lock(s_turn.lock);
+                s_turn.tool_called = false;
+                s_turn.tool_result[0] = '\0';
+                tal_mutex_unlock(s_turn.lock);
             }
+
+            /* Send prompt to cloud AI */
+            __build_and_send(cur_content, tool_loop);
+
+            /* Block until STREAM_STOP (agent_loop_notify_turn_done posts sem) */
+            OPERATE_RET wait_rt = tal_semaphore_wait(s_turn.sem, TURN_WAIT_MS);
+            if (wait_rt != OPRT_OK) {
+                PR_WARN("Turn wait timeout/error (rt=%d), aborting loop", wait_rt);
+                break;
+            }
+
+            /* Check whether a tool was called this round */
+            bool called = false;
+            char result_copy[TOOL_RESULT_BUF_SIZE];
+            if (s_turn.lock) {
+                tal_mutex_lock(s_turn.lock);
+                called = s_turn.tool_called;
+                strncpy(result_copy, s_turn.tool_result, TOOL_RESULT_BUF_SIZE - 1);
+                result_copy[TOOL_RESULT_BUF_SIZE - 1] = '\0';
+                tal_mutex_unlock(s_turn.lock);
+            }
+
+            PR_INFO("LLM iteration=%d tool_called=%d", iteration + 1, called);
+
+            if (!called) {
+                /* No tool call → this was the final response; forward to IM */
+                PR_INFO("No tool call, forwarding final response to IM");
+                if (s_last_response && s_last_response_lock) {
+                    tal_mutex_lock(s_last_response_lock);
+                    if (s_last_response[0] != '\0') {
+                        app_im_bot_send_message(s_last_response);
+                    }
+                    tal_mutex_unlock(s_last_response_lock);
+                }
+                break;
+            }
+
+            /* Tool was called: next iteration feeds the tool result back */
+            cur_content    = result_copy;
+            tool_loop      = true;
+            s_in_tool_loop = true;
+            iteration++;
         }
-        tal_mutex_unlock(s_history_mutex);
 
-        /* 3. Append current message */
-        const char *section_header = is_retry
-            ? "\n\n# Tool Failure – Retry Request\r\n"
-            : "\n\n# User Content\r\n";
-        size_t needed = strlen(in.content) + strlen(section_header) + 1;
-        if (system_prompt_len + needed > DUCKY_CLAW_CONTEXT_BUF_SIZE) {
-            PR_ERR("System prompt buffer overflow, dropping message");
-            tal_free(in.content);
-            continue;
-        }
-        system_prompt_len += snprintf(
-            s_total_prompt + system_prompt_len,
-            DUCKY_CLAW_CONTEXT_BUF_SIZE - system_prompt_len,
-            "%s%s", section_header, in.content);
-
-        PR_DEBUG("System prompt (len=%u): %.200s ...", (unsigned)system_prompt_len, s_total_prompt);
-
-        /* 4. Send to AI */
-        ai_agent_send_text(s_total_prompt);
-
-        /* 5. Record the sent message in history */
-        build_current_context(is_retry ? "tool_retry" : "user", in.content);
+        s_in_tool_loop = false;
+        PR_INFO("===== AGENT TURN END iterations=%d =====", iteration + 1);
 
         tal_free(in.content);
-        tal_system_sleep(100);
+        tal_system_sleep(50);
     }
 }
 
@@ -378,7 +432,6 @@ int agent_loop_start_cb(void *data)
 
     im_msg_t in = {0};
     strncpy(in.channel, "system", sizeof(in.channel) - 1);
-    strncpy(in.chat_id, "", sizeof(in.chat_id) - 1);
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
     in.content = tal_psram_malloc(strlen(GREETING_MESSAGE) + 1);
 #else
@@ -387,7 +440,6 @@ int agent_loop_start_cb(void *data)
     if (!in.content) {
         return OPRT_MALLOC_FAILED;
     }
-    memset(in.content, 0, strlen(GREETING_MESSAGE) + 1);
     strncpy(in.content, GREETING_MESSAGE, strlen(GREETING_MESSAGE) + 1);
     message_bus_push_inbound(&in);
 
@@ -396,11 +448,6 @@ int agent_loop_start_cb(void *data)
 
 /**
  * agent_loop_init - Initialise the agent loop and start its thread.
- *
- * Allocates the prompt buffer, history array, and mutexes.
- * Registers the MCP tool execution hook so tool results are captured.
- *
- * Return: OPRT_OK on success, error code on failure.
  */
 OPERATE_RET agent_loop_init(void)
 {
@@ -410,34 +457,38 @@ OPERATE_RET agent_loop_init(void)
         return OPRT_OK;
     }
 
-    if (!s_total_prompt) {
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
-        s_total_prompt = tal_psram_malloc(DUCKY_CLAW_CONTEXT_BUF_SIZE);
+    s_total_prompt = tal_psram_malloc(DUCKY_CLAW_CONTEXT_BUF_SIZE);
 #else
-        s_total_prompt = tal_malloc(DUCKY_CLAW_CONTEXT_BUF_SIZE);
+    s_total_prompt = tal_malloc(DUCKY_CLAW_CONTEXT_BUF_SIZE);
 #endif
-        if (!s_total_prompt) {
-            return OPRT_MALLOC_FAILED;
-        }
-        memset(s_total_prompt, 0, DUCKY_CLAW_CONTEXT_BUF_SIZE);
+    if (!s_total_prompt) {
+        return OPRT_MALLOC_FAILED;
     }
+    memset(s_total_prompt, 0, DUCKY_CLAW_CONTEXT_BUF_SIZE);
 
+    s_history_json = cJSON_CreateArray();
     if (!s_history_json) {
-        s_history_json = cJSON_CreateArray();
-        if (!s_history_json) {
-            return OPRT_MALLOC_FAILED;
-        }
+        return OPRT_MALLOC_FAILED;
     }
 
-    if (!s_history_mutex) {
-        TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_history_mutex));
-    }
+    TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_history_mutex));
+    TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_turn.lock));
 
-    if (!s_retry_ctx.lock) {
-        TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_retry_ctx.lock));
-    }
+    /* Binary semaphore: starts at 0, inner loop waits, STREAM_STOP posts */
+    TUYA_CALL_ERR_RETURN(tal_semaphore_create_init(&s_turn.sem, 0, 1));
 
-    /* Register hook so every MCP tool result is captured in history */
+#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
+    s_last_response = tal_psram_malloc(LAST_RESPONSE_MAX);
+#else
+    s_last_response = tal_malloc(LAST_RESPONSE_MAX);
+#endif
+    if (!s_last_response) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(s_last_response, 0, LAST_RESPONSE_MAX);
+    TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_last_response_lock));
+
     ai_mcp_server_set_tool_exec_hook(__on_tool_executed, NULL);
 
     PR_DEBUG("Agent loop initialized");
@@ -451,6 +502,5 @@ OPERATE_RET agent_loop_init(void)
 #endif
     TUYA_CALL_ERR_RETURN(tal_thread_create_and_start(&s_agent_loop_thread, NULL, NULL,
                                                       agent_loop_task, NULL, &thrd_param));
-
     return OPRT_OK;
 }

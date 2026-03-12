@@ -195,7 +195,10 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
         AI_NOTIFY_TEXT_T *text = (AI_NOTIFY_TEXT_T *)event->data;
 
         if (data_write_offset + text->datalen >= STREAM_DATA_MAX_LEN) {
-            app_im_bot_send_message((char *)stream_data);
+            /* Only flush to IM if we are NOT in a tool-loop iteration */
+            if (!agent_loop_in_tool_loop()) {
+                app_im_bot_send_message((char *)stream_data);
+            }
             memset(stream_data, 0, STREAM_DATA_MAX_LEN);
             data_write_offset = 0;
         }
@@ -204,10 +207,16 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
         data_write_offset += text->datalen;
     } break;
     case AI_USER_EVT_TEXT_STREAM_STOP: {
-        /* Add assistant context to history */
+        /* Record assistant response in history */
         build_current_context("assistant", (char *)stream_data);
 
-        app_im_bot_send_message((char *)stream_data);
+        /* Pass the full stream text to the agent loop so it can forward to
+         * IM when the inner loop determines this is the final response. */
+        agent_loop_set_last_response((char *)stream_data);
+
+        /* Unblock the inner loop in agent_loop_task */
+        agent_loop_notify_turn_done();
+
         memset(stream_data, 0, STREAM_DATA_MAX_LEN);
         data_write_offset = 0;
     } break;
