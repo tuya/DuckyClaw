@@ -45,9 +45,12 @@ static char s_chat_id[96] = {0};
 
 void app_im_set_chat_id(const char *chat_id)
 {
-    if (chat_id) {
-        strncpy(s_chat_id, chat_id, sizeof(s_chat_id) - 1);
+    if (!chat_id || chat_id[0] == '\0') {
+        return;
     }
+    strncpy(s_chat_id, chat_id, sizeof(s_chat_id) - 1);
+    /* Persist so cron/system messages can be delivered after reboot */
+    (void)im_kv_set_string(IM_NVS_BOT, "chat_id", chat_id);
 }
 
 static void outbound_dispatch_task(void *arg)
@@ -68,7 +71,7 @@ static void outbound_dispatch_task(void *arg)
         } else if (strcmp(msg.channel, "system") == 0) {
             PR_INFO("system msg: %s", msg.content ? msg.content : "");
         }
-        tal_free(msg.content);
+        im_free(msg.content);
     }
 }
 
@@ -90,6 +93,16 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
     OPERATE_RET rt = OPRT_OK;
 
     PR_INFO("app im network connected, init im...");
+
+    /* Restore last known chat_id from KV so cron/system messages work after reboot */
+    if (s_chat_id[0] == '\0') {
+        char saved_chat_id[96] = {0};
+        if (im_kv_get_string(IM_NVS_BOT, "chat_id", saved_chat_id, sizeof(saved_chat_id)) == OPRT_OK
+                && saved_chat_id[0] != '\0') {
+            strncpy(s_chat_id, saved_chat_id, sizeof(s_chat_id) - 1);
+            PR_INFO("app im restored chat_id=%s from KV", s_chat_id);
+        }
+    }
 
     char        mode_kv[16] = {0};
     const char *mode        = IM_SECRET_CHANNEL_MODE;
@@ -152,33 +165,36 @@ OPERATE_RET app_im_init(void)
 
 OPERATE_RET app_im_bot_send_message(const char *message)
 {
-    OPERATE_RET rt = OPRT_OK;
+    if (!message) {
+        return OPRT_INVALID_PARM;
+    }
+
+    if (!s_channel) {
+        PR_ERR("app_im not initialized, channel is NULL");
+        return OPRT_RESOURCE_NOT_READY;
+    }
+
+    if (s_chat_id[0] == '\0') {
+        PR_WARN("app_im chat_id not set, dropping message");
+        return OPRT_INVALID_PARM;
+    }
 
     PR_DEBUG("app im bot send message: %s", message);
 
     im_msg_t out = {0};
     strncpy(out.channel, s_channel, sizeof(out.channel) - 1);
-
-    if (s_chat_id[0] == '\0') {
-        return OPRT_INVALID_PARM;
-    } else{
-        strncpy(out.chat_id, s_chat_id, sizeof(out.chat_id) - 1);
-    }
+    strncpy(out.chat_id, s_chat_id, sizeof(out.chat_id) - 1);
 
     PR_DEBUG("app im bot send message: channel=%s, chat_id=%s", out.channel, out.chat_id);
 
-#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
-    out.content = tal_psram_malloc(strlen(message) + 1);
-#else
-    out.content = tal_malloc(strlen(message) + 1);
-#endif
+    out.content = im_malloc(strlen(message) + 1);
     if (!out.content) {
         return OPRT_MALLOC_FAILED;
     }
     memset(out.content, 0, strlen(message) + 1);
-    strncpy(out.content, message, strlen(message));
+    strncpy(out.content, message, strlen(message) + 1);
 
     message_bus_push_outbound(&out);
 
-    return rt;
+    return OPRT_OK;
 }

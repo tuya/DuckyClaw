@@ -195,7 +195,10 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
         AI_NOTIFY_TEXT_T *text = (AI_NOTIFY_TEXT_T *)event->data;
 
         if (data_write_offset + text->datalen >= STREAM_DATA_MAX_LEN) {
-            app_im_bot_send_message((char *)stream_data);
+            /* Only flush to IM if we are NOT in a tool-loop iteration */
+            if (!agent_loop_in_tool_loop()) {
+                app_im_bot_send_message((char *)stream_data);
+            }
             memset(stream_data, 0, STREAM_DATA_MAX_LEN);
             data_write_offset = 0;
         }
@@ -204,10 +207,18 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
         data_write_offset += text->datalen;
     } break;
     case AI_USER_EVT_TEXT_STREAM_STOP: {
-        /* Add assistant context to history */
+        /* Accumulate the final chunk into stream_data; do NOT post the
+         * semaphore here.  The AI may still have MCP tool calls to execute
+         * after the text stream ends.  We wait for AI_USER_EVT_END instead. */
         build_current_context("assistant", (char *)stream_data);
+        /* Keep stream_data intact so AI_USER_EVT_END can read it */
+    } break;
+    case AI_USER_EVT_END: {
+        /* The full AI turn is complete (text + all MCP tool calls done).
+         * Pass the accumulated text to the agent loop and unblock it. */
+        agent_loop_set_last_response((char *)stream_data);
+        agent_loop_notify_turn_done();
 
-        app_im_bot_send_message((char *)stream_data);
         memset(stream_data, 0, STREAM_DATA_MAX_LEN);
         data_write_offset = 0;
     } break;

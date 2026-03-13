@@ -30,6 +30,7 @@ set(APP_INC
     ${APP_PATH}/gateway
     ${APP_PATH}/skills
     ${APP_PATH}/agent
+    ${APP_PATH}/ai_components/assets/include
 )
 
 ########################################
@@ -47,5 +48,5 @@ target_include_directories(${EXAMPLE_LIB}
         ${APP_INC}
     )
 
-add_subdirectory(${APP_PATH}/TuyaOpen/apps/tuya.ai/ai_components)
+add_subdirectory(${APP_PATH}/ai_components ${CMAKE_BINARY_DIR}/ai_components)
 add_subdirectory(${APP_PATH}/IM ${CMAKE_BINARY_DIR}/IM)
