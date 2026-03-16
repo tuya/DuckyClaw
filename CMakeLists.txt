@@ -59,8 +59,8 @@ add_subdirectory(${APP_PATH}/IM ${CMAKE_BINARY_DIR}/IM)
 # linker errors when the TuyaOpen submodule is initialised.
 # ---------------------------------------------------------------------------
 get_target_property(_EXAMPLE_LIB_SRCS ${EXAMPLE_LIB} SOURCES)
-if(_EXAMPLE_LIB_SRCS)
+if(_EXAMPLE_LIB_SRCS AND NOT _EXAMPLE_LIB_SRCS STREQUAL "-NOTFOUND")
     # Remove TuyaOpen's ai_ui_icon_font.c; DuckyClaw's ui/ version is used.
-    list(FILTER _EXAMPLE_LIB_SRCS EXCLUDE REGEX ".*/TuyaOpen/.*ai_ui_icon_font\\.c$")
+    list(FILTER _EXAMPLE_LIB_SRCS EXCLUDE REGEX "(^|.*/)TuyaOpen/.*ai_ui_icon_font\\.c$")
     set_property(TARGET ${EXAMPLE_LIB} PROPERTY SOURCES ${_EXAMPLE_LIB_SRCS})
 endif()
