@@ -260,6 +260,7 @@ OPERATE_RET ai_agent_deinit(void)
 OPERATE_RET ai_agent_send_text(char *content)
 {
     OPERATE_RET rt = OPRT_OK;
+    PR_NOTICE("ai_agent_send_text: %s", content);
 
     tuya_ai_input_start(true);
     TUYA_CALL_ERR_RETURN(tuya_ai_text_input((uint8_t *)content, strlen(content), strlen(content)));

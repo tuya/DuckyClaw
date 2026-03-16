@@ -11,7 +11,6 @@
 #include "tools_register.h"
 #include "tool_files.h"
 #include "tool_cron.h"
-#include "uart_cmd.h"   
 #include "cron_service.h"
 #include "heartbeat.h"
 #include "memory_manager.h"
@@ -41,10 +40,6 @@ static OPERATE_RET __ai_mcp_init(void *data)
 
     /* Initialize filesystem (mount SD card if needed, create default files) */
     TUYA_CALL_ERR_RETURN(tool_files_fs_init());
-
-    /* Initialize UART2 for command communication */
-    TUYA_CALL_ERR_RETURN(uart_cmd_init());
-    TUYA_CALL_ERR_RETURN(uart_cmd_register());
 
     /* Initialize and start cron service */
     TUYA_CALL_ERR_LOG(cron_service_init());

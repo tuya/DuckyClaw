@@ -100,22 +100,6 @@ size_t context_build_system_prompt(char *buf, size_t size)
                     "You have NO other capabilities beyond these tools and conversation.\n\n");
 
     off += snprintf(buf + off, size - off,
-                    "- uart_exec: Execute a command on the connected computer via UART serial port. "
-                    "Sends the command, waits for the computer to execute it, and returns the output. "
-                    "Use this tool when the user asks to run shell/terminal commands (e.g. ls, cat, ping, etc.). "
-                    "The computer is connected via UART2 and will automatically execute received commands.\n");
-    off += snprintf(buf + off, size - off,
-                    "- uart_write: Send a raw string to the connected computer via UART serial port. "
-                    "Use this for sending data without waiting for a response.\n");
-    off += snprintf(buf + off, size - off,
-                    "- uart_read: Read buffered response data from the connected computer via UART. "
-                    "Buffer is cleared after each read.\n");
-
-    off += snprintf(buf + off, size - off,
-                    "\nIMPORTANT: When the user says 'use UART/serial to send a command' or asks to run a command on the computer, "
-                    "use uart_exec (or uart_write + uart_read). The UART is connected to a computer that executes received commands.\n\n");
-
-    off += snprintf(buf + off, size - off,
                     "- web_search: Search the web. "
                     "Use for up-to-date facts, news, weather, or anything beyond your training data.\n");
 

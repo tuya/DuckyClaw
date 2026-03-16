@@ -419,10 +419,10 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
     }
 
     if (!found) {
-        char err_msg[128];
+        char err_msg[256];
         snprintf(err_msg, sizeof(err_msg),
                  "Error: job '%s' (id=%s) was scheduled but not found in stored list "
-                 "– possible file write failure. Please retry.",
+                 "- possible file write failure. Please retry.",
                  job.name, job.id);
         PR_ERR("cron_add verify failed: %s", err_msg);
         ai_mcp_return_value_set_str(ret_val, err_msg);

@@ -62,12 +62,18 @@
 
 /* Timeout waiting for cloud AI to finish one full round including all MCP
  * tool calls within that round (ms).  A single AI session may invoke several
- * tools sequentially before emitting AI_EVENT_END, so allow 300 s. */
+ * tools sequentially before emitting AI_EVENT_END, so allow 120 s. */
 #define TURN_WAIT_MS    (120 * 1000)
 
-/* Buffer size for a single tool result string */
-#define TOOL_RESULT_BUF_SIZE  512
+/* Buffer size for a single tool result string.
+ * Must be large enough to hold the full cron_list / read_file output.
+ * 2 KB covers ~10 cron jobs with full field text. */
+#define TOOL_RESULT_BUF_SIZE  (512)
 
+/* Buffer holding the last complete AI text stream, set by
+ * agent_loop_set_last_response() called from ducky_claw_chat.c on STREAM_STOP.
+ * The inner loop forwards it to IM when no tool was called. */
+#define LAST_RESPONSE_MAX  (16 * 1024)
 /***********************************************************
 ***********************typedef define***********************
 ***********************************************************/
@@ -95,10 +101,6 @@ static cJSON       *s_history_json  = NULL;
 
 static turn_state_t s_turn = {0};
 
-/* Buffer holding the last complete AI text stream, set by
- * agent_loop_set_last_response() called from ducky_claw_chat.c on STREAM_STOP.
- * The inner loop forwards it to IM when no tool was called. */
-#define LAST_RESPONSE_MAX  (16 * 1024)
 static char        *s_last_response      = NULL;
 static MUTEX_HANDLE s_last_response_lock = NULL;
 
@@ -147,43 +149,58 @@ static void __on_tool_executed(const char *tool_name, OPERATE_RET rt,
         return;
     }
 
-    char buf[TOOL_RESULT_BUF_SIZE];
-    int  off = 0;
+    char   buf[TOOL_RESULT_BUF_SIZE];
+    size_t off = 0;
+    int    len;
 
-    off += snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
-                    "Tool \"%s\": %s (code=%d)",
-                    tool_name, __oprt_to_str(rt), rt);
+    len = snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                 "Tool \"%s\": %s (code=%d)",
+                 tool_name, __oprt_to_str(rt), rt);
+    if (len > 0) {
+        off += (size_t)len;
+    }
 
-    if (rt == OPRT_OK && ret_val) {
+    if (rt == OPRT_OK && ret_val && off < TOOL_RESULT_BUF_SIZE - 2) {
         switch (ret_val->type) {
         case MCP_RETURN_TYPE_BOOLEAN:
-            snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
-                     ", result=%s", ret_val->bool_val ? "true" : "false");
+            len = snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                         ", result=%s", ret_val->bool_val ? "true" : "false");
             break;
         case MCP_RETURN_TYPE_INTEGER:
-            snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
-                     ", result=%d", ret_val->int_val);
+            len = snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                         ", result=%d", ret_val->int_val);
             break;
         case MCP_RETURN_TYPE_STRING:
             if (ret_val->str_val) {
-                snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
-                         ", result=%.300s", ret_val->str_val);
+                len = snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                             ", result=%s", ret_val->str_val);
+            } else {
+                len = 0;
             }
             break;
         case MCP_RETURN_TYPE_JSON:
             if (ret_val->json_val) {
                 char *s = cJSON_PrintUnformatted(ret_val->json_val);
                 if (s) {
-                    snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
-                             ", result=%.300s", s);
+                    len = snprintf(buf + off, TOOL_RESULT_BUF_SIZE - off,
+                                 ", result=%s", s);
                     cJSON_free(s);
+                } else {
+                    len = 0;
                 }
+            } else {
+                len = 0;
             }
             break;
         default:
+            len = 0;
             break;
         }
+        if (len > 0 && off + (size_t)len < TOOL_RESULT_BUF_SIZE) {
+            off += (size_t)len;
+        }
     }
+    buf[off < TOOL_RESULT_BUF_SIZE ? off : TOOL_RESULT_BUF_SIZE - 1] = '\0';
 
     PR_DEBUG("Tool exec hook: %s", buf);
 
@@ -274,18 +291,25 @@ void agent_loop_notify_turn_done(void)
 /**
  * __build_and_send - Build the full prompt and send it to the cloud AI.
  *
- * @content:  Current message content to append (user text or tool result).
- * @is_tool:  True when content is a tool result (uses different section header).
+ * @content:   Current message content to append (user text or tool result).
+ * @is_tool:   True when content is a tool result (uses different section header).
+ *             Also used as the skip-system-prompt flag: the system prompt is only
+ *             sent on the first iteration (is_tool == false) to avoid re-sending
+ *             the large static context on every tool-loop round.
  * @summarize: True when the loop limit has been reached; instructs the AI to
  *             summarise what it has done so far and stop calling tools.
  */
 static void __build_and_send(const char *content, bool is_tool, bool summarize)
 {
     memset(s_total_prompt, 0, DUCKY_CLAW_CONTEXT_BUF_SIZE);
-    size_t off = context_build_system_prompt(s_total_prompt, DUCKY_CLAW_CONTEXT_BUF_SIZE);
-    if (off == 0) {
-        PR_ERR("context_build_system_prompt failed");
-        return;
+    size_t off = 0;
+    if (!is_tool) {
+        /* First iteration: include full system prompt (tools, rules, memory, skills) */
+        off = context_build_system_prompt(s_total_prompt, DUCKY_CLAW_CONTEXT_BUF_SIZE);
+        if (off == 0) {
+            PR_ERR("context_build_system_prompt failed");
+            return;
+        }
     }
 
     /* Append sliding-window history */
@@ -335,7 +359,7 @@ static void __build_and_send(const char *content, bool is_tool, bool summarize)
     off += snprintf(s_total_prompt + off, DUCKY_CLAW_CONTEXT_BUF_SIZE - off,
                     "%s%s", header, content);
 
-    PR_NOTICE("Sending prompt (len=%u, is_tool=%d): %s ...", (unsigned)off, is_tool, s_total_prompt);
+    // PR_NOTICE("Sending prompt (len=%u, is_tool=%d): %s ...", (unsigned)off, is_tool, s_total_prompt);
     ai_agent_send_text(s_total_prompt);
 }
 
@@ -351,6 +375,7 @@ static void agent_loop_task(void *arg)
     PR_DEBUG("Agent loop task started");
 
     while (1) {
+        tal_system_sleep(50);
         im_msg_t in = {0};
         if (message_bus_pop_inbound(&in, UINT32_MAX) != OPRT_OK) {
             continue;
@@ -372,7 +397,6 @@ static void agent_loop_task(void *arg)
 
         /* ---- Inner tool loop (mirrors mimiclaw while iteration < MAX) ---- */
         int  iteration  = 0;
-        bool tool_loop  = false;   /* true after first tool call */
         char *cur_content = in.content;
 
         s_in_tool_loop = false;
@@ -418,7 +442,7 @@ static void agent_loop_task(void *arg)
             }
 
             /* Send prompt to cloud AI */
-            __build_and_send(cur_content, tool_loop, is_last);
+            __build_and_send(cur_content, s_in_tool_loop, is_last);
 
             /* Block until AI_USER_EVT_END (agent_loop_notify_turn_done posts sem) */
             OPERATE_RET wait_rt = tal_semaphore_wait(s_turn.sem, TURN_WAIT_MS);
@@ -455,7 +479,6 @@ static void agent_loop_task(void *arg)
 
             /* Tool was called: next iteration feeds the tool result back */
             cur_content    = result_copy;
-            tool_loop      = true;
             s_in_tool_loop = true;
             iteration++;
         }
@@ -464,7 +487,6 @@ static void agent_loop_task(void *arg)
         PR_INFO("===== AGENT TURN END iterations=%d =====", iteration + 1);
 
         claw_free(in.content);
-        tal_system_sleep(50);
     }
 }
 
@@ -543,5 +565,7 @@ OPERATE_RET agent_loop_init(void)
 #endif
     TUYA_CALL_ERR_RETURN(tal_thread_create_and_start(&s_agent_loop_thread, NULL, NULL,
                                                       agent_loop_task, NULL, &thrd_param));
+
+    // TUYA_CALL_ERR_RETURN(tal_event_subscribe(EVENT_AI_CLIENT_RUN, "agent_loop", agent_loop_start_cb, SUBSCRIBE_TYPE_NORMAL));
     return OPRT_OK;
 }
