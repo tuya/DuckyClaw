@@ -127,8 +127,8 @@ git submodule update --init
 
 ### Development
 - Tuya T5 MCU Guide: [DuckyClaw Quick Start (T5-AI)](https://tuyaopen.ai/docs/duckyclaw/ducky-quick-start-T5AI)
-- Raspberry Pi Guide: [DuckyClaw Quick Start (ESP32-S3)](https://tuyaopen.ai/docs/duckyclaw/ducky-quick-start-ESP32S3)
-- ESP32 MCU Guide: [DuckyClaw Quick Start (raspberry pi 5)](https://tuyaopen.ai/docs/duckyclaw/ducky-quick-start-raspberry-pi-5)
+- Raspberry Pi Guide: [DuckyClaw Quick Start (raspberry pi 5)](https://tuyaopen.ai/docs/duckyclaw/ducky-quick-start-raspberry-pi-5)
+- ESP32 MCU Guide: [DuckyClaw Quick Start (ESP32-S3)](https://tuyaopen.ai/docs/duckyclaw/ducky-quick-start-ESP32S3)
 
 
 ## 🔌 Plugin/Skills Development
