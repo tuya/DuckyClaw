@@ -306,7 +306,7 @@ static void cron_process_due_jobs(void)
 
         /* Case 1: Not yet due → skip */
         if (due_epoch <= 0 || due_epoch > now) {
-            PR_DEBUG("cron skip: '%s' due=%lld now=%lld", job->name,
+            PR_DEBUG("cron skip: '%s' due= %lld now= %lld", job->name,
                      (long long)due_epoch, (long long)now);
             continue;
         }

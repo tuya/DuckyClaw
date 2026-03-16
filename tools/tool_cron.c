@@ -27,7 +27,7 @@
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
-
+static bool __get_int_prop(const MCP_PROPERTY_LIST_T *properties, const char *name, int *out);
 /**
  * __to_local_tm - Convert a UTC epoch to local broken-down time.
  * @epoch:          UTC Unix timestamp (int64_t); pass 0 for current time.
@@ -54,11 +54,159 @@ static void __to_local_tm(int64_t epoch, POSIX_TM_S *tm_out,
 }
 
 /**
+ * __local_datetime_to_epoch - Convert a local broken-down datetime to UTC epoch.
+ *
+ * The device's cloud-synced timezone offset is applied via
+ * tal_time_get_time_zone_seconds() so no timezone knowledge is required from
+ * the caller.
+ *
+ * @year:   Full year (e.g. 2026)
+ * @month:  Month 1-12
+ * @day:    Day 1-31
+ * @hour:   Hour 0-23
+ * @minute: Minute 0-59
+ * @second: Second 0-59
+ * Returns UTC epoch (int64_t), or -1 on invalid input.
+ */
+static int64_t __local_datetime_to_epoch(int year, int month, int day,
+                                         int hour, int minute, int second)
+{
+    /* Basic range validation */
+    if (year < 1970 || month < 1 || month > 12 ||
+        day < 1 || day > 31 || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 59) {
+        return -1;
+    }
+
+    /* Days in each month (non-leap year) */
+    static const int days_in_month[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+    /* Leap year check */
+    bool is_leap = ((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0);
+    int max_day  = days_in_month[month - 1];
+    if (month == 2 && is_leap) {
+        max_day = 29;
+    }
+    if (day > max_day) {
+        return -1;
+    }
+
+    /* Compute days since Unix epoch (1970-01-01) using the algorithm from
+     * https://howardhinnant.github.io/date_algorithms.html (civil_from_days) */
+    int y = year;
+    int m = month;
+    int d = day;
+    if (m <= 2) {
+        y -= 1;
+        m += 9;
+    } else {
+        m -= 3;
+    }
+    int era        = (y >= 0 ? y : y - 399) / 400;
+    int yoe        = y - era * 400;
+    int doy        = (153 * m + 2) / 5 + d - 1;
+    int doe        = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    int64_t days   = (int64_t)era * 146097 + doe - 719468; /* days since 1970-01-01 */
+
+    int64_t utc_epoch = days * 86400 + hour * 3600 + minute * 60 + second;
+
+    /* Subtract timezone offset: local time = UTC + tz_offset → UTC = local - tz_offset */
+    int tz_sec = 0;
+    tal_time_get_time_zone_seconds(&tz_sec);
+    utc_epoch -= (int64_t)tz_sec;
+
+    return utc_epoch;
+}
+
+/**
+ * __tool_time_to_epoch - MCP tool callback: time_to_epoch
+ *
+ * Converts a user-specified local datetime (year/month/day/hour/minute/second)
+ * to a UTC Unix epoch.  All arithmetic is done on the device so the cloud AI
+ * never has to perform timezone or calendar math.
+ *
+ * The AI extracts the date/time fields from the user's natural-language request
+ * and passes them as integer parameters.  The tool returns the exact epoch to
+ * use in cron_add's at_epoch field.
+ */
+static OPERATE_RET __tool_time_to_epoch(const MCP_PROPERTY_LIST_T *properties,
+                                        MCP_RETURN_VALUE_T *ret_val, void *user_data)
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+
+    /* year, month, day are required */
+    if (!__get_int_prop(properties, "year",   &year)  ||
+        !__get_int_prop(properties, "month",  &month) ||
+        !__get_int_prop(properties, "day",    &day)) {
+        ai_mcp_return_value_set_str(ret_val,
+            "Error: year, month, day are required");
+        return OPRT_INVALID_PARM;
+    }
+
+    /* hour, minute, second are optional (default 0) */
+    __get_int_prop(properties, "hour",   &hour);
+    __get_int_prop(properties, "minute", &minute);
+    __get_int_prop(properties, "second", &second);
+
+    /* If year not provided (e.g. AI omits it), fill from current local time */
+    if (year < 1970) {
+        TIME_T now = tal_time_get_posix();
+        POSIX_TM_S tm_now;
+        memset(&tm_now, 0, sizeof(tm_now));
+        tal_time_get_local_time_custom(now, &tm_now);
+        if (year < 1970)  year  = tm_now.tm_year + 1900;
+        if (month <= 0)   month = tm_now.tm_mon  + 1;
+        if (day   <= 0)   day   = tm_now.tm_mday;
+    }
+
+    int64_t epoch = __local_datetime_to_epoch(year, month, day, hour, minute, second);
+    if (epoch < 0) {
+        char err[128];
+        snprintf(err, sizeof(err),
+                 "Error: invalid datetime %04d-%02d-%02d %02d:%02d:%02d",
+                 year, month, day, hour, minute, second);
+        ai_mcp_return_value_set_str(ret_val, err);
+        return OPRT_INVALID_PARM;
+    }
+
+    /* Also verify against current time and return a human-readable confirmation */
+    TIME_T now_t = tal_time_get_posix();
+    int64_t now  = (int64_t)now_t;
+    int64_t diff = epoch - now;
+
+    char tz_label[16];
+    int tz_sec = 0;
+    tal_time_get_time_zone_seconds(&tz_sec);
+    int tz_h = tz_sec / 3600;
+    int tz_m = (tz_sec < 0 ? -tz_sec : tz_sec) % 3600 / 60;
+    snprintf(tz_label, sizeof(tz_label), "UTC%+d:%02d", tz_h, tz_m);
+
+    char result[256];
+    if (diff < 0) {
+        snprintf(result, sizeof(result),
+                 "epoch=%lld (local: %04d-%02d-%02d %02d:%02d:%02d %s) "
+                 "WARNING: this time is %lld seconds in the past.",
+                 (long long)epoch, year, month, day, hour, minute, second,
+                 tz_label, (long long)(-diff));
+    } else {
+        snprintf(result, sizeof(result),
+                 "epoch=%lld (local: %04d-%02d-%02d %02d:%02d:%02d %s, "
+                 "in %lld seconds from now)",
+                 (long long)epoch, year, month, day, hour, minute, second,
+                 tz_label, (long long)diff);
+    }
+
+    ai_mcp_return_value_set_str(ret_val, result);
+    PR_DEBUG("time_to_epoch: %04d-%02d-%02d %02d:%02d:%02d -> epoch=%lld",
+             year, month, day, hour, minute, second, (long long)epoch);
+    return OPRT_OK;
+}
+
+/**
  * __tool_get_current_time - MCP tool callback: get_current_time
  *
  * Returns the device's current UTC epoch and the local time formatted
  * according to the cloud-synced timezone (via tal_time_get_local_time_custom).
- * AI must call this BEFORE cron_add with schedule_type='at' to compute at_epoch.
  */
 static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties,
                                            MCP_RETURN_VALUE_T *ret_val, void *user_data)
@@ -75,25 +223,14 @@ static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties
     /* Pass 0 so tal_time_get_local_time_custom uses current time internally */
     __to_local_tm(0, &tm_local, tz_label, sizeof(tz_label));
 
-    /* Include explicit formula so AI can compute at_epoch for absolute times
-     * without timezone arithmetic. The formula works by computing the delta in
-     * seconds between the current local time and the desired local time, then
-     * adding it to the current UTC epoch – no timezone knowledge needed. */
-    char result[512];
+    char result[256];
     snprintf(result, sizeof(result),
-             "Current time: %04d-%02d-%02d %02d:%02d:%02d %s "
-             "(UTC epoch=%lld, local H=%d M=%d S=%d). "
-             "To schedule N seconds from now: at_epoch=%lld+N. "
-             "To schedule at a specific local clock time HH:MM today: "
-             "at_epoch = %lld + (HH*3600 + MM*60 - %d*3600 - %d*60 - %d). "
-             "If the result is negative (time already passed today), add 86400 for tomorrow.",
+             "Current time: %04d-%02d-%02d %02d:%02d:%02d %s (UTC epoch=%lld). "
+             "To schedule at a specific date/time, call time_to_epoch with the "
+             "desired year/month/day/hour/minute, then pass the returned epoch to cron_add.",
              tm_local.tm_year + 1900, tm_local.tm_mon + 1, tm_local.tm_mday,
              tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec,
-             tz_label, (long long)now,
-             tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec,
-             (long long)now,
-             (long long)now,
-             tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec);
+             tz_label, (long long)now);
 
     ai_mcp_return_value_set_str(ret_val, result);
     PR_DEBUG("get_current_time: epoch=%lld local=%04d-%02d-%02d %02d:%02d:%02d %s",
@@ -191,14 +328,54 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
     } else if (strcmp(schedule_type, "at") == 0) {
         job.kind = CRON_KIND_AT;
 
-        int at_epoch = 0;
-        if (!__get_int_prop(properties, "at_epoch", &at_epoch) || at_epoch <= 0) {
-            ai_mcp_return_value_set_str(ret_val, "Error: 'at' schedule requires 'at_epoch' (unix timestamp)");
-            return OPRT_INVALID_PARM;
+        /* Try datetime parameters first (hour/minute), fall back to at_epoch */
+        int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+        bool has_hour   = __get_int_prop(properties, "hour",   &hour);
+        bool has_minute = __get_int_prop(properties, "minute", &minute);
+
+        if (has_hour || has_minute) {
+            /* Datetime mode: device computes epoch from local time fields */
+            __get_int_prop(properties, "year",   &year);
+            __get_int_prop(properties, "month",  &month);
+            __get_int_prop(properties, "day",    &day);
+            __get_int_prop(properties, "second", &second);
+
+            /* Fill missing date fields from current local time */
+            if (year < 1970 || month <= 0 || day <= 0) {
+                TIME_T now_t = tal_time_get_posix();
+                POSIX_TM_S tm_now;
+                memset(&tm_now, 0, sizeof(tm_now));
+                tal_time_get_local_time_custom(now_t, &tm_now);
+                if (year < 1970)  year  = tm_now.tm_year + 1900;
+                if (month <= 0)   month = tm_now.tm_mon  + 1;
+                if (day   <= 0)   day   = tm_now.tm_mday;
+            }
+
+            int64_t epoch = __local_datetime_to_epoch(year, month, day,
+                                                      hour, minute, second);
+            if (epoch < 0) {
+                char err_msg[128];
+                snprintf(err_msg, sizeof(err_msg),
+                         "Error: invalid datetime %04d-%02d-%02d %02d:%02d:%02d",
+                         year, month, day, hour, minute, second);
+                ai_mcp_return_value_set_str(ret_val, err_msg);
+                return OPRT_INVALID_PARM;
+            }
+            job.at_epoch = epoch;
+            PR_DEBUG("cron_add: datetime %04d-%02d-%02d %02d:%02d:%02d -> epoch=%lld",
+                     year, month, day, hour, minute, second, (long long)epoch);
+        } else {
+            /* Fallback: use at_epoch directly */
+            int at_epoch = 0;
+            if (!__get_int_prop(properties, "at_epoch", &at_epoch) || at_epoch <= 0) {
+                ai_mcp_return_value_set_str(ret_val,
+                    "Error: 'at' schedule requires hour/minute or at_epoch");
+                return OPRT_INVALID_PARM;
+            }
+            job.at_epoch = (int64_t)at_epoch;
         }
 
-        job.at_epoch = (int64_t)at_epoch;
-        int64_t now  = (int64_t)tal_time_get_posix();
+        int64_t now = (int64_t)tal_time_get_posix();
         if (job.at_epoch <= now) {
             char err_msg[128];
             snprintf(err_msg, sizeof(err_msg),
@@ -381,55 +558,107 @@ OPERATE_RET tool_cron_register(void)
 {
     OPERATE_RET rt = OPRT_OK;
 
-    /* get_current_time tool - AI must call this first to know current epoch */
+    /* get_current_time tool */
     TUYA_CALL_ERR_RETURN(AI_MCP_TOOL_ADD(
         "get_current_time",
-        "Get the device's current real time.\n"
-        "MUST be called before cron_add with schedule_type='at'.\n"
-        "The response includes both current epoch and the formula to compute at_epoch:\n"
-        "- Relative time (e.g. '20 minutes later'): at_epoch = current_epoch + N\n"
-        "- Absolute clock time (e.g. '17:40'): use the formula in the response:\n"
-        "    at_epoch = current_epoch + (HH*3600 + MM*60 - cur_H*3600 - cur_M*60 - cur_S)\n"
-        "  where HH:MM is the desired local time and cur_H/M/S are from this response.\n"
-        "  If the result is negative (time already passed today), add 86400.\n"
-        "  NEVER subtract a fixed timezone offset; always use the delta formula above.",
+        "Get the device's current local date and time (and UTC epoch).\n"
+        "Call this when the user asks what time/date it is.\n"
+        "For scheduling a reminder, use time_to_epoch instead to get the at_epoch.",
         __tool_get_current_time,
         NULL
+    ));
+
+    /* time_to_epoch tool */
+    TUYA_CALL_ERR_RETURN(AI_MCP_TOOL_ADD(
+        "time_to_epoch",
+        "Convert a local date/time specified by the user to a UTC Unix epoch.\n"
+        "All calendar and timezone math is done on the device — the AI must NOT compute epoch.\n"
+        "Workflow for scheduling a one-shot reminder:\n"
+        "  1. Extract year/month/day/hour/minute from the user's request.\n"
+        "     - If the user omits the date (e.g. 'at 17:40'), call get_current_time first\n"
+        "       to confirm today's date, then pass it here.\n"
+        "     - If the user omits seconds, pass 0.\n"
+        "  2. Call time_to_epoch with those values → get epoch.\n"
+        "  3. Pass the returned epoch to cron_add as at_epoch.\n"
+        "Parameters:\n"
+        "- year (int): Full year, e.g. 2026 (required).\n"
+        "- month (int): Month 1-12 (required).\n"
+        "- day (int): Day 1-31 (required).\n"
+        "- hour (int): Hour 0-23 (optional, default 0).\n"
+        "- minute (int): Minute 0-59 (optional, default 0).\n"
+        "- second (int): Second 0-59 (optional, default 0).\n"
+        "Response:\n"
+        "- Returns 'epoch=<value>' plus a human-readable confirmation of the local time.\n"
+        "- If the time is in the past, a WARNING is included.",
+        __tool_time_to_epoch,
+        NULL,
+        &(MCP_PROPERTY_DEF_T){ .name = "year",   .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Full year (e.g. 2026)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "month",  .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Month 1-12",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "day",    .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Day of month 1-31",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "hour",   .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Hour 0-23 (default 0)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "minute", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Minute 0-59 (default 0)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "second", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Second 0-59 (default 0)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE }
     ));
 
     /* cron_add tool */
     TUYA_CALL_ERR_RETURN(AI_MCP_TOOL_ADD(
         "cron_add",
-        "Add a scheduled cron job. IMPORTANT: Before calling this tool with schedule_type='at',\n"
-        "you MUST first call 'get_current_time' to obtain the current epoch, then calculate\n"
-        "at_epoch = current_epoch + delay_seconds.\n"
+        "Add a scheduled cron job.\n"
         "Parameters:\n"
         "- name (string): Descriptive name for the job.\n"
         "- schedule_type (string): 'every' for recurring or 'at' for one-shot.\n"
         "- message (string): Message content to send when the job fires.\n"
         "- interval_s (int): Interval in seconds (required for 'every' type).\n"
-        "- at_epoch (int): Unix timestamp to fire at (required for 'at' type, use get_current_time first).\n"
+        "For 'at' type, pass the time directly — the device computes the epoch:\n"
+        "- hour (int): Hour 0-23.\n"
+        "- minute (int): Minute 0-59.\n"
+        "- year/month/day/second (int): Optional. If omitted, today's date and 0 seconds are used.\n"
+        "- at_epoch (int): Alternative — pass a UTC epoch directly (used only if hour/minute are absent).\n"
         "- delete_after_run (bool): Whether to auto-delete after firing (default true for 'at').\n"
         "Response:\n"
         "- Returns job ID and schedule details on success, including 'Verified in stored list'.\n"
-        "Tool-chain verification (REQUIRED after this call):\n"
-        "- The tool internally verifies the job was saved to the persistence file.\n"
-        "- If the response does NOT contain 'Verified in stored list', the file write failed.\n"
-        "- On file write failure, call cron_list to check existing jobs, then retry cron_add.\n"
-        "- After success, you MAY optionally call cron_list to display the updated job list to the user.",
+        "- If the response does NOT contain 'Verified in stored list', the file write failed;\n"
+        "  call cron_list to check existing jobs, then retry cron_add.",
         __tool_cron_add,
         NULL,
         MCP_PROP_STR("name", "Descriptive name for the cron job"),
         MCP_PROP_STR("schedule_type", "'every' for recurring or 'at' for one-shot"),
         MCP_PROP_STR("message", "Message content to send when the job fires"),
-        /* NOTE: MCP_PROP_INT_DEF macro has a bug - parameter 'name' collides with
-         * struct member designator '.name', causing preprocessor to produce invalid
-         * syntax like '."interval_s"'. Use inline compound literal instead. */
         &(MCP_PROPERTY_DEF_T){ .name = "interval_s", .type = MCP_PROPERTY_TYPE_INTEGER,
             .description = "Interval in seconds for 'every' schedule type",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "hour", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Hour 0-23 for 'at' type",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "minute", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Minute 0-59 for 'at' type",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "year", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Full year e.g. 2026 (optional, defaults to today)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "month", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Month 1-12 (optional, defaults to today)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "day", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Day 1-31 (optional, defaults to today)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
+        &(MCP_PROPERTY_DEF_T){ .name = "second", .type = MCP_PROPERTY_TYPE_INTEGER,
+            .description = "Second 0-59 (optional, default 0)",
+            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         &(MCP_PROPERTY_DEF_T){ .name = "at_epoch", .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Unix timestamp for 'at' schedule type",
+            .description = "UTC epoch (alternative to hour/minute, used only if hour/minute absent)",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         MCP_PROP_BOOL_DEF("delete_after_run", "Auto-delete after firing (default true for 'at')", true)
     ));

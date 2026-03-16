@@ -140,15 +140,18 @@ size_t context_build_system_prompt(char *buf, size_t size)
 #endif
 
     off += snprintf(buf + off, size - off,
+                    "- time_to_epoch: Convert a local date/time to a UTC epoch (for debugging/query).\n"
                     "- cron_add: Schedule a recurring or one-shot reminder. "
-                    "MUST call get_current_time first to obtain the current epoch.\n"
+                    "For 'at' type: pass hour, minute (and optionally year/month/day). "
+                    "Device computes epoch internally — do NOT compute epoch yourself.\n"
                     "- cron_list: List all scheduled cron jobs. "
                     "MUST call this tool when the user asks about tasks/reminders.\n"
                     "- cron_remove: Remove a scheduled cron job by ID.\n\n");
 
     off += snprintf(buf + off, size - off,
                     "## When to Use Tools (mandatory)\n"
-                    "- Setting/listing/removing reminders or timers -> cron_add / cron_list / cron_remove\n"
+                    "- Setting a reminder at a specific time -> cron_add (pass hour/minute directly)\n"
+                    "- Listing/removing reminders -> cron_list / cron_remove\n"
                     "- Reading/writing/finding files -> read_file / write_file / find_path / list_dir\n"
                     "- Asking current time or date -> get_current_time\n"
                     "- Searching the web -> web_search\n\n"
