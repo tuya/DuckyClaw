@@ -94,7 +94,8 @@ static void agent_loop_task(void *arg)
 {
     PR_DEBUG("Agent loop task started");
     while (1) {
-        tal_system_sleep(100);
+        tal_system_sleep(50);
+        // PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
         im_msg_t in = {0};
         if (message_bus_pop_inbound(&in, UINT32_MAX) != OPRT_OK) continue;
         if (!in.content) continue;
@@ -144,7 +145,6 @@ static void agent_loop_task(void *arg)
 
         tal_free(in.content);
 
-        
     }
 }
 

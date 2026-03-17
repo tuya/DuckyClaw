@@ -88,9 +88,18 @@
 #define IM_FS_POLL_STACK           (16 * 1024)
 #endif
 
+/* ---- Memory safety ---- */
+
+/* Minimum free internal heap required before parsing an inbound event payload.
+ * If free heap drops below this threshold the frame is dropped to avoid a
+ * heap-exhaustion / watchdog crash inside cJSON_ParseWithLength. */
+#ifndef IM_LOW_HEAP_THRESHOLD
+#define IM_LOW_HEAP_THRESHOLD      (20 * 1024)
+#endif
+
 /* ---- Message bus / outbound ---- */
 
-#define IM_BUS_QUEUE_LEN           16
+#define IM_BUS_QUEUE_LEN           10
 #ifdef  OUTBOUND_STACK_SIZE
 #define IM_OUTBOUND_STACK          OUTBOUND_STACK_SIZE
 #else

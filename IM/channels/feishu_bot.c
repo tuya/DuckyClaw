@@ -31,7 +31,7 @@ static THREAD_HANDLE s_ws_thread         = NULL;
 #define FS_HTTP_TIMEOUT_MS         10000
 #define FS_HTTP_RESP_BUF_SIZE      (16 * 1024)
 #define FS_TOKEN_SAFETY_MARGIN_S   60
-#define FS_WS_RX_BUF_SIZE          (64 * 1024)
+#define FS_WS_RX_BUF_SIZE          (8 * 1024)
 #define FS_WS_DEFAULT_RECONNECT_MS 5000
 #define FS_WS_DEFAULT_PING_MS      (120 * 1000)
 /* Poll wait (ms) for receiving frames; smaller = lower latency, too small = more CPU spin */
@@ -93,20 +93,26 @@ static bool sender_allowed_token(const char *allow_id, const char *sender_ids)
         return true;
     }
 
-    char sender_csv[384] = {0};
-    im_safe_copy(sender_csv, sizeof(sender_csv), sender_ids);
+    char *sender_csv = im_calloc(1, 384);
+    if (!sender_csv) {
+        return false;
+    }
+    im_safe_copy(sender_csv, 384, sender_ids);
 
+    bool  found   = false;
     char *saveptr = NULL;
     char *tok     = strtok_r(sender_csv, "|", &saveptr);
     while (tok) {
         char *id = strip_optional_quotes(trim_ws(tok));
         if (id[0] != '\0' && strcmp(id, allow_id) == 0) {
-            return true;
+            found = true;
+            break;
         }
         tok = strtok_r(NULL, "|", &saveptr);
     }
 
-    return false;
+    im_free(sender_csv);
+    return found;
 }
 
 static bool sender_allowed(const char *sender_ids)
@@ -216,13 +222,20 @@ static OPERATE_RET fs_http_call_via_proxy(const char *host, const char *path, co
     }
 
     int  body_len       = body ? (int)strlen(body) : 0;
-    char auth_line[700] = {0};
-    if (bearer_token && bearer_token[0]) {
-        snprintf(auth_line, sizeof(auth_line), "Authorization: Bearer %s\r\n", bearer_token);
+    char *auth_line = im_calloc(1, 700);
+    char *req_header = im_calloc(1, 1400);
+    if (!auth_line || !req_header) {
+        im_free(auth_line);
+        im_free(req_header);
+        proxy_conn_close(conn);
+        return OPRT_MALLOC_FAILED;
     }
 
-    char req_header[1400] = {0};
-    int  req_len          = snprintf(req_header, sizeof(req_header),
+    if (bearer_token && bearer_token[0]) {
+        snprintf(auth_line, 700, "Authorization: Bearer %s\r\n", bearer_token);
+    }
+
+    int  req_len          = snprintf(req_header, 1400,
                                      "%s %s HTTP/1.1\r\n"
                                                "Host: %s\r\n"
                                                "User-Agent: IM/1.0\r\n"
@@ -232,16 +245,20 @@ static OPERATE_RET fs_http_call_via_proxy(const char *host, const char *path, co
                                                "Connection: close\r\n"
                                                "\r\n",
                                      method, path, host, body_len, auth_line);
+    im_free(auth_line);
 
-    if (req_len <= 0 || req_len >= (int)sizeof(req_header)) {
+    if (req_len <= 0 || req_len >= 1400) {
+        im_free(req_header);
         proxy_conn_close(conn);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     if (proxy_conn_write(conn, req_header, req_len) != req_len) {
+        im_free(req_header);
         proxy_conn_close(conn);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
+    im_free(req_header);
 
     if (body_len > 0 && proxy_conn_write(conn, body, body_len) != body_len) {
         proxy_conn_close(conn);
@@ -336,9 +353,12 @@ static OPERATE_RET fs_http_call_direct(const char *host, const char *path, const
     uint8_t              header_count = 0;
     headers[header_count++]           = (http_client_header_t){.key = "Content-Type", .value = "application/json"};
 
-    char auth[640] = {0};
+    char *auth = im_calloc(1, 640);
+    if (!auth) {
+        return OPRT_MALLOC_FAILED;
+    }
     if (bearer_token && bearer_token[0] != '\0') {
-        snprintf(auth, sizeof(auth), "Bearer %s", bearer_token);
+        snprintf(auth, 640, "Bearer %s", bearer_token);
         headers[header_count++] = (http_client_header_t){.key = "Authorization", .value = auth};
     }
 
@@ -371,8 +391,11 @@ static OPERATE_RET fs_http_call_direct(const char *host, const char *path, const
         },
         &response);
     if (http_rt != HTTP_CLIENT_SUCCESS) {
+        im_free(auth);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
+
+    im_free(auth);
 
     if (status_code) {
         *status_code = response.status_code;
@@ -483,6 +506,7 @@ static OPERATE_RET refresh_tenant_token(void)
     }
 
     cJSON *root = cJSON_Parse(resp);
+    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
     if (!root) {
         im_free(resp);
         return OPRT_CR_CJSON_ERR;
@@ -728,7 +752,7 @@ typedef struct {
     tuya_transporter_t tcp;
     tuya_tls_hander    tls;
     int                socket_fd;
-    uint8_t            rx_buf[FS_WS_RX_BUF_SIZE];
+    uint8_t           *rx_buf;  /* heap-allocated, size = FS_WS_RX_BUF_SIZE */
     size_t             rx_len;
 } fs_ws_conn_t;
 
@@ -836,6 +860,10 @@ static void fs_conn_close(fs_ws_conn_t *conn)
         conn->socket_fd = -1;
     }
 
+    if (conn->rx_buf) {
+        im_free(conn->rx_buf);
+        conn->rx_buf = NULL;
+    }
     conn->mode   = FS_CONN_NONE;
     conn->rx_len = 0;
 }
@@ -848,6 +876,11 @@ static OPERATE_RET fs_conn_open(fs_ws_conn_t *conn, const char *host, int port, 
 
     memset(conn, 0, sizeof(*conn));
     conn->socket_fd = -1;
+
+    conn->rx_buf = im_malloc(FS_WS_RX_BUF_SIZE);
+    if (!conn->rx_buf) {
+        return OPRT_MALLOC_FAILED;
+    }
 
     if (http_proxy_is_enabled()) {
         conn->proxy = proxy_conn_open(host, port, timeout_ms);
@@ -1024,37 +1057,56 @@ static OPERATE_RET fs_ws_handshake(fs_ws_conn_t *conn, const char *host, const c
         return OPRT_INVALID_PARM;
     }
 
-    const char *ws_key    = "dGhlIHNhbXBsZSBub25jZQ==";
-    char        req[1024] = {0};
-    int         req_len   = snprintf(req, sizeof(req),
-                                     "GET %s HTTP/1.1\r\n"
-                                               "Host: %s\r\n"
-                                               "Upgrade: websocket\r\n"
-                                               "Connection: Upgrade\r\n"
-                                               "Sec-WebSocket-Key: %s\r\n"
-                                               "Sec-WebSocket-Version: 13\r\n"
-                                               "User-Agent: IM/1.0\r\n\r\n",
-                                     path, host, ws_key);
-    if (req_len <= 0 || req_len >= (int)sizeof(req)) {
+#define FS_HANDSHAKE_REQ_SIZE    1024
+#define FS_HANDSHAKE_HEADER_SIZE 2048
+
+    const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    OPERATE_RET rt     = OPRT_OK;
+
+    char *req = im_calloc(1, FS_HANDSHAKE_REQ_SIZE);
+    if (!req) {
+        return OPRT_MALLOC_FAILED;
+    }
+
+    int req_len = snprintf(req, FS_HANDSHAKE_REQ_SIZE,
+                           "GET %s HTTP/1.1\r\n"
+                           "Host: %s\r\n"
+                           "Upgrade: websocket\r\n"
+                           "Connection: Upgrade\r\n"
+                           "Sec-WebSocket-Key: %s\r\n"
+                           "Sec-WebSocket-Version: 13\r\n"
+                           "User-Agent: IM/1.0\r\n\r\n",
+                           path, host, ws_key);
+    if (req_len <= 0 || req_len >= FS_HANDSHAKE_REQ_SIZE) {
+        im_free(req);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     if (fs_conn_write(conn, (const uint8_t *)req, req_len) != req_len) {
+        im_free(req);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
+    im_free(req);
+    req = NULL;
 
-    char     header[4096] = {0};
-    int      total        = 0;
-    int      header_end   = -1;
-    uint32_t start_ms     = tal_system_get_millisecond();
+    char *header = im_calloc(1, FS_HANDSHAKE_HEADER_SIZE);
+    if (!header) {
+        return OPRT_MALLOC_FAILED;
+    }
 
-    while ((int)(tal_system_get_millisecond() - start_ms) < FS_HTTP_TIMEOUT_MS && total < (int)sizeof(header) - 1) {
-        int n = fs_conn_read(conn, (uint8_t *)header + total, (int)sizeof(header) - total - 1, 1000);
+    int      total      = 0;
+    int      header_end = -1;
+    uint32_t start_ms   = tal_system_get_millisecond();
+
+    while ((int)(tal_system_get_millisecond() - start_ms) < FS_HTTP_TIMEOUT_MS &&
+           total < FS_HANDSHAKE_HEADER_SIZE - 1) {
+        int n = fs_conn_read(conn, (uint8_t *)header + total, FS_HANDSHAKE_HEADER_SIZE - total - 1, 1000);
         if (n == OPRT_RESOURCE_NOT_READY) {
             continue;
         }
         if (n <= 0) {
-            return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
+            rt = OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
+            goto cleanup;
         }
 
         total += n;
@@ -1066,27 +1118,36 @@ static OPERATE_RET fs_ws_handshake(fs_ws_conn_t *conn, const char *host, const c
     }
 
     if (header_end <= 0) {
-        return OPRT_TIMEOUT;
+        rt = OPRT_TIMEOUT;
+        goto cleanup;
     }
 
     uint16_t status = im_parse_http_status(header);
     if (status != 101) {
         IM_LOGE(TAG, "feishu ws handshake failed http=%u", status);
-        return OPRT_COM_ERROR;
+        rt = OPRT_COM_ERROR;
+        goto cleanup;
     }
 
     size_t remain = (size_t)(total - header_end);
     conn->rx_len  = 0;
     if (remain > 0) {
-        if (remain > sizeof(conn->rx_buf)) {
-            return OPRT_BUFFER_NOT_ENOUGH;
+        if (remain > FS_WS_RX_BUF_SIZE) {
+            rt = OPRT_BUFFER_NOT_ENOUGH;
+            goto cleanup;
         }
         memcpy(conn->rx_buf, header + header_end, remain);
         conn->rx_len = remain;
     }
 
     IM_LOGI(TAG, "feishu ws handshake success!");
-    return OPRT_OK;
+
+cleanup:
+    im_free(header);
+    return rt;
+
+#undef FS_HANDSHAKE_REQ_SIZE
+#undef FS_HANDSHAKE_HEADER_SIZE
 }
 
 static OPERATE_RET fs_ws_decode_one_frame(fs_ws_conn_t *conn, uint8_t *opcode, uint8_t **payload, size_t *payload_len,
@@ -1196,21 +1257,28 @@ static OPERATE_RET fs_ws_poll_frame(fs_ws_conn_t *conn, int wait_ms, uint8_t *op
         return rt;
     }
 
-    uint8_t tmp[1024] = {0};
-    int     n         = fs_conn_read(conn, tmp, sizeof(tmp), wait_ms);
+    uint8_t *tmp = im_calloc(1, 1024);
+    if (!tmp) {
+        return OPRT_MALLOC_FAILED;
+    }
+    int     n         = fs_conn_read(conn, tmp, 1024, wait_ms);
     if (n == OPRT_RESOURCE_NOT_READY) {
+        im_free(tmp);
         return OPRT_RESOURCE_NOT_READY;
     }
     if (n <= 0) {
+        im_free(tmp);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
 
-    if (conn->rx_len + (size_t)n > sizeof(conn->rx_buf)) {
+    if (conn->rx_len + (size_t)n > FS_WS_RX_BUF_SIZE) {
+        im_free(tmp);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     memcpy(conn->rx_buf + conn->rx_len, tmp, (size_t)n);
     conn->rx_len += (size_t)n;
+    im_free(tmp);
 
     consumed = 0;
     rt       = fs_ws_decode_one_frame(conn, opcode, payload, payload_len, &consumed);
@@ -1754,9 +1822,13 @@ static void append_prefixed(char *out, size_t out_size, const char *prefix, cons
         return;
     }
 
-    char buf[384] = {0};
-    snprintf(buf, sizeof(buf), "%s%s", prefix ? prefix : "", text);
+    char *buf = im_calloc(1, 384);
+    if (!buf) {
+        return;
+    }
+    snprintf(buf, 384, "%s%s", prefix ? prefix : "", text);
     append_text(out, out_size, buf);
+    im_free(buf);
 }
 
 static void parse_post_block(cJSON *lang_obj, char *out, size_t out_size)
@@ -2103,6 +2175,14 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
         return;
     }
 
+    uint32_t free_heap = tal_system_get_free_heap_size();
+    PR_INFO("Device Free heap %d", free_heap);
+    // if (free_heap < IM_LOW_HEAP_THRESHOLD) {
+    //     IM_LOGW(TAG, "[feishu] low heap %u, drop event payload len=%u",
+    //             (unsigned)free_heap, (unsigned)payload_len);
+    //     return;
+    // }
+
     cJSON *root = cJSON_ParseWithLength((const char *)payload, payload_len);
     if (!root) {
         IM_LOGW(TAG, "[feishu] event payload parse failed len=%u", (unsigned)payload_len);
@@ -2161,27 +2241,35 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
         sender_union_id = json_str2(sender_id_obj, "union_id", NULL);
     }
 
-    char sender_identity[384] = {0};
-    append_sender_id(sender_identity, sizeof(sender_identity), sender_open_id);
-    append_sender_id(sender_identity, sizeof(sender_identity), sender_user_id);
-    append_sender_id(sender_identity, sizeof(sender_identity), sender_union_id);
+    char *sender_identity = im_calloc(1, 384);
+    if (!sender_identity) {
+        cJSON_Delete(root);
+        return;
+    }
+    append_sender_id(sender_identity, 384, sender_open_id);
+    append_sender_id(sender_identity, 384, sender_user_id);
+    append_sender_id(sender_identity, 384, sender_union_id);
     if (sender_identity[0] == '\0') {
         IM_LOGW(TAG, "feishu sender id missing, drop message");
+        im_free(sender_identity);
         cJSON_Delete(root);
         return;
     }
 
     if (!sender_open_id || sender_open_id[0] == '\0') {
         IM_LOGW(TAG, "feishu sender open_id missing, drop message");
+        im_free(sender_identity);
         cJSON_Delete(root);
         return;
     }
 
     if (!sender_allowed(sender_identity)) {
         IM_LOGW(TAG, "feishu access denied sender=%s", sender_identity);
+        im_free(sender_identity);
         cJSON_Delete(root);
         return;
     }
+    im_free(sender_identity);
 
     /* Dedup by message_id: same user message may be repeated/replayed */
     const char *message_id = json_str2(message, "message_id", NULL);
@@ -2206,11 +2294,16 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
     const char *msg_type     = json_str2(message, "message_type", NULL);
     const char *content_json = json_str2(message, "content", NULL);
 
-    char text[2048] = {0};
-    extract_message_text(msg_type ? msg_type : "unknown", content_json, text, sizeof(text));
+    char *text = im_calloc(1, 2048);
+    if (!text) {
+        cJSON_Delete(root);
+        return;
+    }
+    extract_message_text(msg_type ? msg_type : "unknown", content_json, text, 2048);
     if (text[0] == '\0') {
         IM_LOGW(TAG, "[feishu] message text empty msg_type=%s (unsupported or empty content)",
                   msg_type ? msg_type : "null");
+        im_free(text);
         cJSON_Delete(root);
         return;
     }
@@ -2223,6 +2316,7 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
     }
 
     if (!reply_to || reply_to[0] == '\0') {
+        im_free(text);
         cJSON_Delete(root);
         return;
     }
@@ -2231,6 +2325,7 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
               (unsigned)strlen(text));
 
     publish_inbound_feishu(reply_to, text);
+    im_free(text);
     cJSON_Delete(root);
 }
 
@@ -2373,30 +2468,50 @@ static void feishu_ws_task(void *arg)
             continue;
         }
 
-        fs_ws_conf_t conf;
-        rt = fs_fetch_ws_conf(&conf);
+        /* Heap-allocate large buffers to keep stack usage low */
+        fs_ws_conf_t *conf = im_calloc(1, sizeof(fs_ws_conf_t));
+        if (!conf) {
+            tal_system_sleep(FS_WS_DEFAULT_RECONNECT_MS);
+            continue;
+        }
+        rt = fs_fetch_ws_conf(conf);
         if (rt != OPRT_OK) {
             IM_LOGW(TAG, "fetch ws endpoint failed rt=%d", rt);
+            im_free(conf);
             tal_system_sleep(FS_WS_DEFAULT_RECONNECT_MS);
             continue;
         }
 
-        uint32_t reconnect_ms = conf.reconnect_interval_ms ? conf.reconnect_interval_ms : FS_WS_DEFAULT_RECONNECT_MS;
+        uint32_t reconnect_ms = conf->reconnect_interval_ms ? conf->reconnect_interval_ms : FS_WS_DEFAULT_RECONNECT_MS;
 
-        char     ws_host[128] = {0};
-        char     ws_path[640] = {0};
-        uint16_t ws_port      = 443;
-        int      service_id   = 0;
+        char    *ws_host   = im_calloc(1, 128);
+        char    *ws_path   = im_calloc(1, 640);
+        if (!ws_host || !ws_path) {
+            im_free(ws_host);
+            im_free(ws_path);
+            im_free(conf);
+            tal_system_sleep(reconnect_ms);
+            continue;
+        }
+        uint16_t ws_port   = 443;
+        int      service_id = 0;
 
-        rt = fs_parse_ws_url(conf.url, ws_host, sizeof(ws_host), &ws_port, ws_path, sizeof(ws_path), &service_id);
+        uint32_t ping_interval_ms_saved = conf->ping_interval_ms;
+        rt = fs_parse_ws_url(conf->url, ws_host, 128, &ws_port, ws_path, 640, &service_id);
+        im_free(conf);
+        conf = NULL;
         if (rt != OPRT_OK) {
             IM_LOGW(TAG, "parse ws endpoint failed rt=%d", rt);
+            im_free(ws_host);
+            im_free(ws_path);
             tal_system_sleep(reconnect_ms);
             continue;
         }
 
         fs_ws_conn_t *conn = im_calloc(1, sizeof(fs_ws_conn_t));
         if (!conn) {
+            im_free(ws_host);
+            im_free(ws_path);
             tal_system_sleep(reconnect_ms);
             continue;
         }
@@ -2404,12 +2519,18 @@ static void feishu_ws_task(void *arg)
         rt = fs_conn_open(conn, ws_host, ws_port, FS_HTTP_TIMEOUT_MS);
         if (rt != OPRT_OK) {
             IM_LOGW(TAG, "feishu ws connect failed rt=%d", rt);
+            im_free(ws_host);
+            im_free(ws_path);
             im_free(conn);
             tal_system_sleep(reconnect_ms);
             continue;
         }
 
         rt = fs_ws_handshake(conn, ws_host, ws_path);
+        im_free(ws_host);
+        im_free(ws_path);
+        ws_host = NULL;
+        ws_path = NULL;
         if (rt != OPRT_OK) {
             IM_LOGW(TAG, "feishu ws handshake failed rt=%d", rt);
             fs_conn_close(conn);
@@ -2418,7 +2539,7 @@ static void feishu_ws_task(void *arg)
             continue;
         }
 
-        uint32_t ping_interval_ms = conf.ping_interval_ms ? conf.ping_interval_ms : FS_WS_DEFAULT_PING_MS;
+        uint32_t ping_interval_ms = ping_interval_ms_saved ? ping_interval_ms_saved : FS_WS_DEFAULT_PING_MS;
         uint32_t next_ping_ms     = tal_system_get_millisecond() + ping_interval_ms;
 
         IM_LOGI(TAG, "feishu ws online!");
@@ -2500,22 +2621,28 @@ OPERATE_RET feishu_bot_init(void)
     }
 #endif
 
-    char tmp[512] = {0};
-    if (im_kv_get_string(IM_NVS_FS, IM_NVS_KEY_FS_APP_ID, tmp, sizeof(tmp)) == OPRT_OK && tmp[0] != '\0') {
+    char *tmp = im_calloc(1, 512);
+    if (!tmp) {
+        return OPRT_MALLOC_FAILED;
+    }
+
+    if (im_kv_get_string(IM_NVS_FS, IM_NVS_KEY_FS_APP_ID, tmp, 512) == OPRT_OK && tmp[0] != '\0') {
         im_safe_copy(s_app_id, sizeof(s_app_id), tmp);
     }
 
-    memset(tmp, 0, sizeof(tmp));
-    if (im_kv_get_string(IM_NVS_FS, IM_NVS_KEY_FS_APP_SECRET, tmp, sizeof(tmp)) == OPRT_OK && tmp[0] != '\0') {
+    memset(tmp, 0, 512);
+    if (im_kv_get_string(IM_NVS_FS, IM_NVS_KEY_FS_APP_SECRET, tmp, 512) == OPRT_OK && tmp[0] != '\0') {
         im_safe_copy(s_app_secret, sizeof(s_app_secret), tmp);
     }
 
 #ifdef IM_NVS_KEY_FS_ALLOW_FROM
-    memset(tmp, 0, sizeof(tmp));
-    if (im_kv_get_string(IM_NVS_FS, IM_NVS_KEY_FS_ALLOW_FROM, tmp, sizeof(tmp)) == OPRT_OK && tmp[0] != '\0') {
+    memset(tmp, 0, 512);
+    if (im_kv_get_string(IM_NVS_FS, IM_NVS_KEY_FS_ALLOW_FROM, tmp, 512) == OPRT_OK && tmp[0] != '\0') {
         im_safe_copy(s_allow_from, sizeof(s_allow_from), tmp);
     }
 #endif
+
+    im_free(tmp);
 
     s_tenant_token[0]  = '\0';
     s_tenant_expire_ms = 0;
