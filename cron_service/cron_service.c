@@ -360,10 +360,11 @@ OPERATE_RET cron_service_start(void)
     }
 
     THREAD_CFG_T cfg = {0};
-    cfg.stackDepth   = CRON_THREAD_STACK;
+    cfg.stackDepth   = 3584;
     cfg.priority     = THREAD_PRIO_1;
     cfg.thrdname     = "claw_cron";
 
+    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
     OPERATE_RET rt = tal_thread_create_and_start(&s_cron_thread, NULL, NULL,
                                                   cron_task_main, NULL, &cfg);
     if (rt != OPRT_OK) {
@@ -371,6 +372,7 @@ OPERATE_RET cron_service_start(void)
         s_cron_thread = NULL;
         return rt;
     }
+    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
 
     PR_INFO("Cron started (%d jobs, check every %u sec)", s_job_count,
             (unsigned)(CLAW_CRON_CHECK_INTERVAL_MS / 1000));

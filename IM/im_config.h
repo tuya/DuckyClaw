@@ -91,8 +91,8 @@
 /* ---- Message bus / outbound ---- */
 
 #define IM_BUS_QUEUE_LEN           16
-#ifdef CONFIG_OUTBOUND_STACK_SIZE
-#define IM_OUTBOUND_STACK          CONFIG_OUTBOUND_STACK_SIZE
+#ifdef  OUTBOUND_STACK_SIZE
+#define IM_OUTBOUND_STACK          OUTBOUND_STACK_SIZE
 #else
 #define IM_OUTBOUND_STACK          (12 * 1024)
 #endif

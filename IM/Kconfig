@@ -4,4 +4,9 @@ menu "IM Config"
         default 12288
         help
             Stack size in bytes for the IM outbound thread (default 12*1024).
+    config IM_FS_POLL_STACK
+        int "IM feishu poll thread stack size (bytes)"
+        default 16384
+        help
+            Stack size in bytes for the IM feishu poll thread (default 16*1024).
 endmenu

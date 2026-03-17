@@ -2548,7 +2548,9 @@ OPERATE_RET feishu_bot_start(void)
     cfg.priority     = THREAD_PRIO_1;
     cfg.thrdname     = "im_fs_ws";
 
+    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
     rt = tal_thread_create_and_start(&s_ws_thread, NULL, NULL, feishu_ws_task, NULL, &cfg);
+    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
     if (rt != OPRT_OK) {
         s_ws_thread = NULL;
         return rt;

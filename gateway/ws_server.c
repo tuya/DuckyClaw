@@ -696,8 +696,8 @@ OPERATE_RET ws_server_start(void)
     }
 
     THREAD_CFG_T cfg = {0};
-#ifdef CONFIG_WS_SERVER_STACK_SIZE
-    cfg.stackDepth   = CONFIG_WS_SERVER_STACK_SIZE;
+#ifdef WS_SERVER_STACK_SIZE
+    cfg.stackDepth   = WS_SERVER_STACK_SIZE;
 #else
     cfg.stackDepth   = 10 * 1024;
 #endif
