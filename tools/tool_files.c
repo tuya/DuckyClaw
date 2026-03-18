@@ -44,13 +44,33 @@
  */
 static bool __validate_path(const char *path)
 {
-    if (!path) {
+    if (!path || path[0] == '\0') {
         return false;
     }
-    if (strncmp(path, CLAW_FS_ROOT_PATH "/", strlen(CLAW_FS_ROOT_PATH "/")) != 0) {
+#if CLAW_FS_ROOT_PATH_EMPTY
+    /* Linux platform: root path is empty, allow any absolute path */
+    if (path[0] != '/') {
         return false;
     }
-    if (strstr(path, "..") != NULL) {
+#else
+    /* Other platforms: must start with CLAW_FS_ROOT_PATH */
+    size_t root_len = strlen(CLAW_FS_ROOT_PATH);
+    if (root_len == 0) {
+        /* Empty root path case - should not happen when CLAW_FS_ROOT_PATH_EMPTY is 0 */
+        if (path[0] != '/') {
+            return false;
+        }
+    } else {
+        if (strncmp(path, CLAW_FS_ROOT_PATH "/", root_len + 1) != 0) {
+            return false;
+        }
+    }
+#endif
+    /* Check for path traversal attempts: "/../", "/..", "../", ".." */
+    if (strstr(path, "/../") != NULL ||
+        strstr(path, "/..") != NULL ||
+        strncmp(path, "../", 3) == 0 ||
+        strcmp(path, "..") == 0) {
         return false;
     }
     return true;
@@ -87,7 +107,11 @@ static OPERATE_RET __tool_read_file(const MCP_PROPERTY_LIST_T *properties,
 {
     const char *path = __get_str_property(properties, "path");
     if (!__validate_path(path)) {
+#if CLAW_FS_ROOT_PATH_EMPTY
+        ai_mcp_return_value_set_str(ret_val, "Error: invalid path, must be an absolute path starting with /");
+#else
         ai_mcp_return_value_set_str(ret_val, "Error: invalid path, must start with " CLAW_FS_ROOT_PATH);
+#endif
         return OPRT_INVALID_PARM;
     }
 
@@ -139,7 +163,11 @@ static OPERATE_RET __tool_write_file(const MCP_PROPERTY_LIST_T *properties,
     const char *content = __get_str_property(properties, "content");
 
     if (!__validate_path(path)) {
+#if CLAW_FS_ROOT_PATH_EMPTY
+        ai_mcp_return_value_set_str(ret_val, "Error: invalid path, must be an absolute path starting with /");
+#else
         ai_mcp_return_value_set_str(ret_val, "Error: invalid path, must start with " CLAW_FS_ROOT_PATH);
+#endif
         return OPRT_INVALID_PARM;
     }
 
@@ -163,8 +191,12 @@ static OPERATE_RET __tool_write_file(const MCP_PROPERTY_LIST_T *properties,
     }
 
     char msg[64];
-    snprintf(msg, sizeof(msg), "OK: wrote %u bytes", (unsigned)strlen(content));
-    ai_mcp_return_value_set_str(ret_val, msg);
+    int ret = snprintf(msg, sizeof(msg), "OK: wrote %u bytes", (unsigned)strlen(content));
+    if (ret < 0 || (size_t)ret >= sizeof(msg)) {
+        ai_mcp_return_value_set_str(ret_val, "OK: write done");
+    } else {
+        ai_mcp_return_value_set_str(ret_val, msg);
+    }
 
     PR_DEBUG("write_file path=%s bytes=%u", path, (unsigned)strlen(content));
     return OPRT_OK;
@@ -190,7 +222,11 @@ static OPERATE_RET __tool_edit_file(const MCP_PROPERTY_LIST_T *properties,
     const char *new_s = __get_str_property(properties, "new_string");
 
     if (!__validate_path(path)) {
+#if CLAW_FS_ROOT_PATH_EMPTY
+        ai_mcp_return_value_set_str(ret_val, "Error: invalid path, must be an absolute path starting with /");
+#else
         ai_mcp_return_value_set_str(ret_val, "Error: invalid path, must start with " CLAW_FS_ROOT_PATH);
+#endif
         return OPRT_INVALID_PARM;
     }
 
@@ -233,7 +269,17 @@ static OPERATE_RET __tool_edit_file(const MCP_PROPERTY_LIST_T *properties,
     /* Build new content */
     size_t prefix_len = (size_t)(pos - buf);
     size_t suffix_off = prefix_len + strlen(old_s);
-    size_t need       = prefix_len + strlen(new_s) + strlen(buf + suffix_off) + 1;
+    size_t new_s_len = strlen(new_s);
+    size_t suffix_len = strlen(buf + suffix_off);
+
+    /* Check for size_t overflow before addition */
+    if (prefix_len > SIZE_MAX - new_s_len - suffix_len - 1) {
+        claw_free(buf);
+        ai_mcp_return_value_set_str(ret_val, "Error: file content too large");
+        return OPRT_INVALID_PARM;
+    }
+
+    size_t need = prefix_len + new_s_len + suffix_len + 1;
 
     char *new_buf = (char *)claw_malloc(need);
     if (!new_buf) {
@@ -299,7 +345,14 @@ static OPERATE_RET __tool_list_dir(const MCP_PROPERTY_LIST_T *properties,
     }
 
     size_t off = 0;
-    off += snprintf(buf + off, buf_size - off, "Dir: %s\n", prefix);
+    int ret = snprintf(buf + off, buf_size - off, "Dir: %s\n", prefix);
+    if (ret < 0 || (size_t)ret >= buf_size - off) {
+        claw_dir_close(dir);
+        claw_free(buf);
+        ai_mcp_return_value_set_str(ret_val, "Error: directory path too long");
+        return OPRT_INVALID_PARM;
+    }
+    off += (size_t)ret;
 
     while (off < buf_size - 2) {
         TUYA_FILEINFO info = NULL;
@@ -312,7 +365,12 @@ static OPERATE_RET __tool_list_dir(const MCP_PROPERTY_LIST_T *properties,
             continue;
         }
 
-        off += snprintf(buf + off, buf_size - off, "- %s\n", name);
+        ret = snprintf(buf + off, buf_size - off, "- %s\n", name);
+        if (ret < 0 || (size_t)ret >= buf_size - off) {
+            /* Buffer full, truncate listing */
+            break;
+        }
+        off += (size_t)ret;
     }
 
     claw_dir_close(dir);
