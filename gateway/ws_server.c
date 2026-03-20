@@ -11,11 +11,13 @@
  */
 
 #include "ws_server.h"
+#include "tuya_app_config.h"
 #include "tool_files.h"
 #include "ai_agent.h"
 #include "cJSON.h"
 #include "mix_method.h"
 #include "tal_hash.h"
+#include "tal_kv.h"
 #include "tal_log.h"
 #include "tal_mutex.h"
 #include "tal_network.h"
@@ -48,6 +50,9 @@ static MUTEX_HANDLE    s_ws_mutex   = NULL;
 static volatile BOOL_T s_ws_running = FALSE;
 static int             s_listen_fd  = -1;
 static ws_client_t     s_clients[CLAW_WS_MAX_CLIENTS];
+
+/* ---- authentication token ---- */
+static char s_ws_token[CLAW_WS_TOKEN_MAX_LEN] = {0};
 
 /* ------------------------------------------------------------------ */
 /*  client helpers                                                     */
@@ -162,6 +167,42 @@ static bool ws_get_header_value(const char *headers, const char *name,
     return false;
 }
 
+/**
+ * @brief Extract the value of the "token" query parameter from an HTTP request line
+ *
+ * Searches for "token=" in the raw HTTP header string and copies the value
+ * (terminated by space, '&', '\r', or '\n') into token_buf.
+ *
+ * @param[in]  hdr        Raw HTTP headers (null-terminated)
+ * @param[out] token_buf  Buffer to receive the extracted token
+ * @param[in]  buf_size   Size of token_buf including null terminator
+ * @return true if a non-empty token was found, false otherwise
+ */
+static bool ws_extract_url_token(const char *hdr,
+                                 char *token_buf, size_t buf_size)
+{
+    if (!hdr || !token_buf || buf_size == 0) {
+        return false;
+    }
+    token_buf[0] = '\0';
+
+    const char *tok = strstr(hdr, "token=");
+    if (!tok) {
+        return false;
+    }
+    tok += 6; /* skip "token=" */
+
+    size_t i = 0;
+    while (tok[i] && tok[i] != ' ' && tok[i] != '&'
+           && tok[i] != '\r' && tok[i] != '\n'
+           && i < buf_size - 1) {
+        token_buf[i] = tok[i];
+        i++;
+    }
+    token_buf[i] = '\0';
+    return (i > 0);
+}
+
 /* ------------------------------------------------------------------ */
 /*  WebSocket send helpers                                             */
 /* ------------------------------------------------------------------ */
@@ -268,6 +309,23 @@ static OPERATE_RET ws_do_handshake_locked(ws_client_t *client)
 
     client->rx_buf[hdr_end - 1] = '\0';
     const char *hdr             = (const char *)client->rx_buf;
+
+    /* ---- Token authentication ---- */
+    if (s_ws_token[0] != '\0') {
+        char client_token[CLAW_WS_TOKEN_MAX_LEN] = {0};
+        if (!ws_extract_url_token(hdr, client_token, sizeof(client_token)) ||
+            strcmp(client_token, s_ws_token) != 0) {
+            PR_WARN("ws auth failed fd=%d", client->fd);
+            const char *resp_403 =
+                "HTTP/1.1 403 Forbidden\r\n"
+                "Content-Length: 0\r\n"
+                "Connection: close\r\n\r\n";
+            (void)ws_send_all(client->fd,
+                              (const uint8_t *)resp_403, strlen(resp_403));
+            return OPRT_AUTHENTICATION_FAIL;
+        }
+        PR_DEBUG("ws auth ok fd=%d", client->fd);
+    }
 
     char ws_key[64] = {0};
     if (!ws_get_header_value(hdr, "Sec-WebSocket-Key", ws_key, sizeof(ws_key))) {
@@ -664,6 +722,38 @@ static OPERATE_RET ws_send_text_to_client_locked(ws_client_t *client,
 /*  PUBLIC API                                                         */
 /* ================================================================== */
 
+/**
+ * @brief Load the authentication token from compile-time macro and/or KV storage
+ *
+ * Priority: KV storage (runtime) > CLAW_WS_AUTH_TOKEN (compile-time).
+ * An empty token disables authentication entirely.
+ *
+ * @return none
+ */
+static void ws_load_auth_token(void)
+{
+    /* 1. Seed from compile-time default */
+    if (CLAW_WS_AUTH_TOKEN[0] != '\0') {
+        snprintf(s_ws_token, sizeof(s_ws_token), "%s", CLAW_WS_AUTH_TOKEN);
+    }
+
+    /* 2. Override with runtime KV value if present */
+    uint8_t *kv_val = NULL;
+    size_t   kv_len = 0;
+    if (tal_kv_get(CLAW_WS_TOKEN_KV_KEY, &kv_val, &kv_len) == OPRT_OK && kv_val) {
+        if (kv_val[0] != '\0') {
+            snprintf(s_ws_token, sizeof(s_ws_token), "%s", (char *)kv_val);
+        }
+        tal_kv_free(kv_val);
+    }
+
+    if (s_ws_token[0] != '\0') {
+        PR_INFO("ws auth token loaded (len=%u)", (unsigned)strlen(s_ws_token));
+    } else {
+        PR_WARN("ws auth token is EMPTY, authentication disabled");
+    }
+}
+
 OPERATE_RET ws_server_start(void)
 {
     if (s_ws_thread) {
@@ -678,6 +768,7 @@ OPERATE_RET ws_server_start(void)
         }
     }
 
+    ws_load_auth_token();
     ws_clients_init();
 
     s_listen_fd = tal_net_socket_create(PROTOCOL_TCP);
@@ -773,4 +864,28 @@ OPERATE_RET ws_server_stop(void)
     ws_clients_init();
 
     return OPRT_OK;
+}
+
+OPERATE_RET ws_server_set_token(const char *token)
+{
+    if (!token) {
+        return OPRT_INVALID_PARM;
+    }
+
+    if (!s_ws_mutex) {
+        return OPRT_RESOURCE_NOT_READY;
+    }
+
+    tal_mutex_lock(s_ws_mutex);
+    snprintf(s_ws_token, sizeof(s_ws_token), "%s", token);
+    tal_mutex_unlock(s_ws_mutex);
+
+    /* Persist to KV so the token survives reboots */
+    OPERATE_RET rt = tal_kv_set(CLAW_WS_TOKEN_KV_KEY,
+                                (const uint8_t *)token,
+                                strlen(token) + 1);
+    if (rt != OPRT_OK) {
+        PR_WARN("ws token kv persist failed rt=%d", rt);
+    }
+    return rt;
 }

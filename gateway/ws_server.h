@@ -24,6 +24,12 @@
 #define CLAW_WS_MAX_CLIENTS   4
 #endif
 
+#ifndef CLAW_WS_TOKEN_MAX_LEN
+#define CLAW_WS_TOKEN_MAX_LEN 128
+#endif
+
+#define CLAW_WS_TOKEN_KV_KEY  "ws_auth_token"
+
 /* ---------- public API ---------- */
 
 /**
@@ -51,3 +57,14 @@ OPERATE_RET ws_server_send(const char *chat_id, const char *text);
  * @return OPRT_OK on success
  */
 OPERATE_RET ws_server_stop(void);
+
+/**
+ * @brief Set or update the WebSocket authentication token at runtime
+ *
+ * The new token is persisted to KV storage and takes effect immediately.
+ * Pass an empty string to disable authentication.
+ *
+ * @param token  The new authentication token (NULL-terminated)
+ * @return OPRT_OK on success
+ */
+OPERATE_RET ws_server_set_token(const char *token);

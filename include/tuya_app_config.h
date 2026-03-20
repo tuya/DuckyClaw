@@ -55,6 +55,11 @@ extern "C" {
 #define IM_SECRET_DC_CHANNEL_ID     ""
 #endif
 
+// WebSocket authentication token (empty string = auth disabled)
+#ifndef CLAW_WS_AUTH_TOKEN
+#define CLAW_WS_AUTH_TOKEN          ""
+#endif
+
 #ifdef __cplusplus
 }
 #endif
