@@ -269,7 +269,7 @@ static OPERATE_RET ws_do_handshake_locked(ws_client_t *client)
     client->rx_buf[hdr_end - 1] = '\0';
     const char *hdr             = (const char *)client->rx_buf;
 
-    char ws_key[128] = {0};
+    char ws_key[64] = {0};
     if (!ws_get_header_value(hdr, "Sec-WebSocket-Key", ws_key, sizeof(ws_key))) {
         PR_WARN("handshake missing websocket header fd=%d", client->fd);
         return OPRT_CJSON_GET_ERR;
@@ -434,9 +434,15 @@ static void ws_handle_text_message_locked(ws_client_t *client,
         return;
     }
 
-    /* Update chat_id if client supplied one */
+    /* Update chat_id if client supplied one.
+     * Sanitise the user-supplied string: reject values containing '%'
+     * to prevent any potential format-string issues downstream. */
     if (cJSON_IsString(chat_id) && chat_id->valuestring && chat_id->valuestring[0]) {
-        snprintf(client->chat_id, sizeof(client->chat_id), "%s", chat_id->valuestring);
+        if (!strchr(chat_id->valuestring, '%')) {
+            snprintf(client->chat_id, sizeof(client->chat_id), "%s", chat_id->valuestring);
+        } else {
+            PR_WARN("chat_id contains forbidden '%%' character, ignored");
+        }
     }
 
     /* Forward message text to the AI agent */

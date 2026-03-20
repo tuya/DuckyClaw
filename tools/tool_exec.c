@@ -532,8 +532,28 @@ static OPERATE_RET __pi_device_manager_list_devices(cJSON **out_json)
 
 static bool __is_allowed_safe_command(const char *cmd)
 {
-    // Safety checks intentionally disabled: allow any command.
-    return (cmd != NULL);
+    if (!cmd) {
+        return false;
+    }
+
+    /* Blacklist of dangerous commands/patterns that could compromise the device */
+    static const char *blacklist[] = {
+        "rm -rf /",
+        "mkfs",
+        "dd if=",
+        "> /dev/sd",
+        "chmod -R 777 /",
+        ":(){ :|:",       /* fork bomb */
+        NULL
+    };
+
+    for (int i = 0; blacklist[i] != NULL; i++) {
+        if (strstr(cmd, blacklist[i]) != NULL) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static OPERATE_RET __raspberry_pi_controller_exec(const char *command,
@@ -548,13 +568,13 @@ static OPERATE_RET __raspberry_pi_controller_exec(const char *command,
     *out_json = NULL;
 
 #if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
-    if (!unsafe && !__is_allowed_safe_command(command)) {
+    /* Always enforce blacklist regardless of unsafe flag */
+    if (!__is_allowed_safe_command(command)) {
         cJSON *json = cJSON_CreateObject();
         if (!json) {
             return OPRT_MALLOC_FAILED;
         }
-        cJSON_AddStringToObject(json, "error", "command not allowed in safe mode");
-        cJSON_AddStringToObject(json, "hint", "Set unsafe=true to run arbitrary commands");
+        cJSON_AddStringToObject(json, "error", "command blocked by security blacklist");
         cJSON_AddStringToObject(json, "command", command);
         *out_json = json;
         return OPRT_INVALID_PARM;

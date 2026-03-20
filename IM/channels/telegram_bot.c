@@ -291,11 +291,8 @@ static OPERATE_RET tg_http_call(const char *path, const char *post_data, char *r
     return tg_http_call_direct(path, post_data, resp_buf, resp_buf_size, status_code);
 }
 
-static bool tg_response_is_ok(const char *json_str, const char **out_desc)
+static bool tg_response_is_ok(const char *json_str)
 {
-    if (out_desc) {
-        *out_desc = NULL;
-    }
     if (!json_str || json_str[0] == '\0') {
         return false;
     }
@@ -305,10 +302,10 @@ static bool tg_response_is_ok(const char *json_str, const char **out_desc)
     if (root) {
         cJSON *ok_field = cJSON_GetObjectItem(root, "ok");
         ok              = cJSON_IsTrue(ok_field);
-        if (!ok && out_desc) {
+        if (!ok) {
             cJSON *desc = cJSON_GetObjectItem(root, "description");
             if (cJSON_IsString(desc) && desc->valuestring) {
-                *out_desc = desc->valuestring;
+                IM_LOGW(TAG, "telegram API error: %s", desc->valuestring);
             }
         }
         cJSON_Delete(root);
@@ -587,13 +584,12 @@ OPERATE_RET telegram_send_message(const char *chat_id, const char *text)
         OPERATE_RET rt              = OPRT_MALLOC_FAILED;
         bool        sent_ok         = false;
         bool        markdown_failed = false;
-        const char *desc            = NULL;
 
         if (json) {
             IM_LOGD(TAG, "send telegram chunk bytes=%u", (unsigned)chunk);
             rt = tg_http_call(path, json, resp, TG_HTTP_RESP_BUF_SIZE, &status);
             if (rt == OPRT_OK && status == 200) {
-                sent_ok = tg_response_is_ok(resp, &desc);
+                sent_ok = tg_response_is_ok(resp);
                 if (!sent_ok) {
                     markdown_failed = true;
                     IM_LOGI(TAG, "markdown rejected rt=%d status=%u", rt, status);
@@ -622,11 +618,10 @@ OPERATE_RET telegram_send_message(const char *chat_id, const char *text)
 
             memset(resp, 0, TG_HTTP_RESP_BUF_SIZE);
             status = 0;
-            desc   = NULL;
             rt     = tg_http_call(path, json2, resp, TG_HTTP_RESP_BUF_SIZE, &status);
             cJSON_free(json2);
             if (rt == OPRT_OK && status == 200) {
-                sent_ok = tg_response_is_ok(resp, &desc);
+                sent_ok = tg_response_is_ok(resp);
             }
             if (!sent_ok) {
                 IM_LOGE(TAG, "plain send failed rt=%d status=%u", rt, status);

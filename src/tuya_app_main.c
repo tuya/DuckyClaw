@@ -89,13 +89,27 @@ void user_log_output_cb(const char *str)
 void user_upgrade_notify_on(tuya_iot_client_t *client, cJSON *upgrade)
 {
     PR_INFO("----- Upgrade information -----");
-    PR_INFO("OTA Channel: %d", cJSON_GetObjectItem(upgrade, "type")->valueint);
-    PR_INFO("Version: %s", cJSON_GetObjectItem(upgrade, "version")->valuestring);
-    PR_INFO("Size: %s", cJSON_GetObjectItem(upgrade, "size")->valuestring);
-    PR_INFO("MD5: %s", cJSON_GetObjectItem(upgrade, "md5")->valuestring);
-    PR_INFO("HMAC: %s", cJSON_GetObjectItem(upgrade, "hmac")->valuestring);
-    PR_INFO("URL: %s", cJSON_GetObjectItem(upgrade, "url")->valuestring);
-    PR_INFO("HTTPS URL: %s", cJSON_GetObjectItem(upgrade, "httpsUrl")->valuestring);
+
+    if (!upgrade) {
+        PR_WARN("upgrade JSON is NULL");
+        return;
+    }
+
+    cJSON *type_item     = cJSON_GetObjectItem(upgrade, "type");
+    cJSON *version_item  = cJSON_GetObjectItem(upgrade, "version");
+    cJSON *size_item     = cJSON_GetObjectItem(upgrade, "size");
+    cJSON *md5_item      = cJSON_GetObjectItem(upgrade, "md5");
+    cJSON *hmac_item     = cJSON_GetObjectItem(upgrade, "hmac");
+    cJSON *url_item      = cJSON_GetObjectItem(upgrade, "url");
+    cJSON *https_item    = cJSON_GetObjectItem(upgrade, "httpsUrl");
+
+    PR_INFO("OTA Channel: %d", cJSON_IsNumber(type_item)          ? type_item->valueint       : -1);
+    PR_INFO("Version: %s",     cJSON_IsString(version_item)       ? version_item->valuestring  : "N/A");
+    PR_INFO("Size: %s",        cJSON_IsString(size_item)          ? size_item->valuestring     : "N/A");
+    PR_INFO("MD5: %s",         cJSON_IsString(md5_item)           ? md5_item->valuestring      : "N/A");
+    PR_INFO("HMAC: %s",        cJSON_IsString(hmac_item)          ? hmac_item->valuestring     : "N/A");
+    PR_INFO("URL: %s",         cJSON_IsString(url_item)           ? url_item->valuestring      : "N/A");
+    PR_INFO("HTTPS URL: %s",   cJSON_IsString(https_item)         ? https_item->valuestring    : "N/A");
 }
 
 OPERATE_RET audio_dp_obj_proc(dp_obj_recv_t *dpobj)
