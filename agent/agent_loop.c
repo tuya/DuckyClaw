@@ -78,6 +78,15 @@
 ***********************typedef define***********************
 ***********************************************************/
 
+static const char *__json_get_string(const cJSON *item)
+{
+    if (item == NULL || !cJSON_IsString(item) || item->valuestring == NULL) {
+        return NULL;
+    }
+
+    return item->valuestring;
+}
+
 /**
  * Per-turn state shared between agent_loop_task (consumer) and the
  * STREAM_STOP callback / tool hook (producers).
@@ -320,8 +329,8 @@ static void __build_and_send(const char *content, bool is_tool, bool summarize)
                         "\r\n\n# Recent Memory History\r\n");
         for (int j = 0; j < count; j++) {
             cJSON      *e    = cJSON_GetArrayItem(s_history_json, j);
-            const char *role = cJSON_GetStringValue(cJSON_GetObjectItem(e, "role"));
-            const char *text = cJSON_GetStringValue(cJSON_GetObjectItem(e, "content"));
+            const char *role = __json_get_string(cJSON_GetObjectItem(e, "role"));
+            const char *text = __json_get_string(cJSON_GetObjectItem(e, "content"));
             if (role && text) {
                 off += snprintf(s_total_prompt + off, DUCKY_CLAW_CONTEXT_BUF_SIZE - off,
                                 "\n- %s: %s", role, text);

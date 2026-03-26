@@ -35,7 +35,7 @@ extern "C" {
 ***********************************************************/
 /* Maximum limits */
 #define MCP_MAX_PROPERTIES      16
-#define MCP_MAX_PAYLOAD_SIZE    8192
+#define MCP_MAX_PAYLOAD_SIZE    (8192 * 2)
 
 /* MCP protocol version */
 #define MCP_PROTOCOL_VERSION    "2024-11-05"

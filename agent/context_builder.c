@@ -138,12 +138,7 @@ size_t context_build_system_prompt(char *buf, size_t size)
                     "- Listing/removing reminders -> cron_list / cron_remove\n"
                     "- Reading/writing/finding files -> read_file / write_file / find_path / list_dir\n"
                     "- Asking current time or date -> get_current_time\n"
-                    "- Searching the web -> web_search\n\n"
-                    "## What You CANNOT Do (no tool exists)\n"
-                    "- Control hardware (camera, volume, lights, motors). "
-                    "If asked, reply: \"I don't have a tool to control that hardware.\"\n"
-                    "- Send messages to other platforms. "
-                    "- Access the internet beyond web_search.\n\n");
+                    "- Searching the web -> web_search\n\n");
 
     off += snprintf(buf + off, size - off,
                     "## Memory\n"

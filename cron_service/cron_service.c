@@ -54,6 +54,15 @@ static THREAD_HANDLE s_cron_thread = NULL;
 
 static OPERATE_RET cron_save_jobs(void);
 
+static const char *cron_json_get_string(const cJSON *item)
+{
+    if (item == NULL || !cJSON_IsString(item) || item->valuestring == NULL) {
+        return NULL;
+    }
+
+    return item->valuestring;
+}
+
 /**
  * @brief Get current epoch time
  */
@@ -152,10 +161,10 @@ static OPERATE_RET cron_load_jobs(void)
         cron_job_t *job = &s_jobs[s_job_count];
         memset(job, 0, sizeof(*job));
 
-        const char *id       = cJSON_GetStringValue(cJSON_GetObjectItem(item, "id"));
-        const char *name     = cJSON_GetStringValue(cJSON_GetObjectItem(item, "name"));
-        const char *kind_str = cJSON_GetStringValue(cJSON_GetObjectItem(item, "kind"));
-        const char *message  = cJSON_GetStringValue(cJSON_GetObjectItem(item, "message"));
+        const char *id       = cron_json_get_string(cJSON_GetObjectItem(item, "id"));
+        const char *name     = cron_json_get_string(cJSON_GetObjectItem(item, "name"));
+        const char *kind_str = cron_json_get_string(cJSON_GetObjectItem(item, "kind"));
+        const char *message  = cron_json_get_string(cJSON_GetObjectItem(item, "message"));
 
         if (!id || !name || !kind_str || !message) {
             continue;

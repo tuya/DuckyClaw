@@ -412,6 +412,14 @@ static OPERATE_RET fs_http_call_direct(const char *host, const char *path, const
     return OPRT_OK;
 }
 
+static const char *json_item_str(cJSON *item)
+{
+    if (item == NULL || !cJSON_IsString(item) || item->valuestring == NULL) {
+        return NULL;
+    }
+    return item->valuestring;
+}
+
 static OPERATE_RET fs_http_call(const char *host, const char *path, const char *method, const char *body,
                                 const char *bearer_token, char *resp_buf, size_t resp_buf_size, uint16_t *status_code)
 {
@@ -451,8 +459,9 @@ static bool fs_response_ok(const char *json_str, const char **out_msg)
 
     if (!ok && out_msg) {
         cJSON *msg = cJSON_GetObjectItem(root, "msg");
-        if (cJSON_IsString(msg) && msg->valuestring) {
-            im_safe_copy(s_last_err_msg, sizeof(s_last_err_msg), msg->valuestring);
+        const char *msg_str = json_item_str(msg);
+        if (msg_str) {
+            im_safe_copy(s_last_err_msg, sizeof(s_last_err_msg), msg_str);
             *out_msg = s_last_err_msg;
         }
     }
@@ -516,13 +525,13 @@ static OPERATE_RET refresh_tenant_token(void)
     cJSON      *code   = cJSON_GetObjectItem(root, "code");
     cJSON      *token  = cJSON_GetObjectItem(root, "tenant_access_token");
     cJSON      *expire = cJSON_GetObjectItem(root, "expire");
-    if (cJSON_IsNumber(code) && (int)code->valuedouble == 0 && cJSON_IsString(token) && token->valuestring &&
+    if (cJSON_IsNumber(code) && (int)code->valuedouble == 0 && json_item_str(token) &&
         cJSON_IsNumber(expire) && expire->valuedouble > 0) {
         uint32_t expire_s = (uint32_t)expire->valuedouble;
         if (expire_s > FS_TOKEN_SAFETY_MARGIN_S) {
             expire_s -= FS_TOKEN_SAFETY_MARGIN_S;
         }
-        im_safe_copy(s_tenant_token, sizeof(s_tenant_token), token->valuestring);
+        im_safe_copy(s_tenant_token, sizeof(s_tenant_token), json_item_str(token));
         s_tenant_expire_ms = tal_system_get_millisecond() + expire_s * 1000u;
         out                = OPRT_OK;
     }
@@ -1904,8 +1913,8 @@ static void parse_interactive_element(cJSON *element, char *out, size_t out_size
         cJSON *txt = cJSON_GetObjectItem(element, "text");
         if (cJSON_IsObject(txt)) {
             append_text(out, out_size, json_str2(txt, "content", "text"));
-        } else if (cJSON_IsString(txt)) {
-            append_text(out, out_size, txt->valuestring);
+        } else if (json_item_str(txt)) {
+            append_text(out, out_size, json_item_str(txt));
         }
 
         cJSON *fields = cJSON_GetObjectItem(element, "fields");
@@ -1932,8 +1941,8 @@ static void parse_interactive_element(cJSON *element, char *out, size_t out_size
         cJSON *txt = cJSON_GetObjectItem(element, "text");
         if (cJSON_IsObject(txt)) {
             append_text(out, out_size, json_str2(txt, "content", "text"));
-        } else if (cJSON_IsString(txt)) {
-            append_text(out, out_size, txt->valuestring);
+        } else if (json_item_str(txt)) {
+            append_text(out, out_size, json_item_str(txt));
         }
 
         const char *url = json_str2(element, "url", NULL);
@@ -2014,13 +2023,13 @@ static void parse_interactive_node(cJSON *node, char *out, size_t out_size)
         return;
     }
 
-    if (cJSON_IsString(node)) {
-        cJSON *parsed = cJSON_Parse(node->valuestring);
+    if (json_item_str(node)) {
+        cJSON *parsed = cJSON_Parse(json_item_str(node));
         if (parsed) {
             parse_interactive_node(parsed, out, out_size);
             cJSON_Delete(parsed);
         } else {
-            append_text(out, out_size, node->valuestring);
+            append_text(out, out_size, json_item_str(node));
         }
         return;
     }
@@ -2032,8 +2041,8 @@ static void parse_interactive_node(cJSON *node, char *out, size_t out_size)
     cJSON *title = cJSON_GetObjectItem(node, "title");
     if (cJSON_IsObject(title)) {
         append_prefixed(out, out_size, "title: ", json_str2(title, "content", "text"));
-    } else if (cJSON_IsString(title)) {
-        append_prefixed(out, out_size, "title: ", title->valuestring);
+    } else if (json_item_str(title)) {
+        append_prefixed(out, out_size, "title: ", json_item_str(title));
     }
 
     cJSON *elements = cJSON_GetObjectItem(node, "elements");
@@ -2055,8 +2064,8 @@ static void parse_interactive_node(cJSON *node, char *out, size_t out_size)
         cJSON *header_title = cJSON_GetObjectItem(header, "title");
         if (cJSON_IsObject(header_title)) {
             append_prefixed(out, out_size, "title: ", json_str2(header_title, "content", "text"));
-        } else if (cJSON_IsString(header_title)) {
-            append_prefixed(out, out_size, "title: ", header_title->valuestring);
+        } else if (json_item_str(header_title)) {
+            append_prefixed(out, out_size, "title: ", json_item_str(header_title));
         }
     }
 }

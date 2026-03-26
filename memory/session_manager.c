@@ -24,6 +24,14 @@
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
+static const char *__json_get_string(const cJSON *item)
+{
+    if (item == NULL || !cJSON_IsString(item) || item->valuestring == NULL) {
+        return NULL;
+    }
+
+    return item->valuestring;
+}
 
 /**
  * @brief Build session file path from chat_id
@@ -73,9 +81,9 @@ OPERATE_RET session_manager_init(void)
 
 OPERATE_RET session_append(const char *chat_id, const char *role, const char *content)
 {
-    if (!chat_id || !role || !content) {
-        return OPRT_INVALID_PARM;
-    }
+    TUYA_CHECK_NULL_RETURN(chat_id, OPRT_INVALID_PARM);
+    TUYA_CHECK_NULL_RETURN(role, OPRT_INVALID_PARM);
+    TUYA_CHECK_NULL_RETURN(content, OPRT_INVALID_PARM);
 
     char path[128] = {0};
     __session_path(chat_id, path, sizeof(path));
@@ -115,7 +123,9 @@ OPERATE_RET session_append(const char *chat_id, const char *role, const char *co
 
 OPERATE_RET session_get_history_json(const char *chat_id, char *buf, size_t size, int max_msgs)
 {
-    if (!chat_id || !buf || size == 0 || max_msgs <= 0) {
+    TUYA_CHECK_NULL_RETURN(chat_id, OPRT_INVALID_PARM);
+    TUYA_CHECK_NULL_RETURN(buf, OPRT_INVALID_PARM);
+    if (size == 0 || max_msgs <= 0) {
         return OPRT_INVALID_PARM;
     }
     if (max_msgs > CLAW_SESSION_MAX_MSGS) {
@@ -174,9 +184,9 @@ OPERATE_RET session_get_history_json(const char *chat_id, char *buf, size_t size
         cJSON *j_content = cJSON_GetObjectItem(src, "content");
 
         cJSON_AddStringToObject(entry, "role",
-                                cJSON_IsString(j_role) ? j_role->valuestring : "user");
+                                __json_get_string(j_role) ? __json_get_string(j_role) : "user");
         cJSON_AddStringToObject(entry, "content",
-                                cJSON_IsString(j_content) ? j_content->valuestring : "");
+                                __json_get_string(j_content) ? __json_get_string(j_content) : "");
         cJSON_AddItemToArray(arr, entry);
     }
 
@@ -204,7 +214,8 @@ OPERATE_RET session_get_history_json(const char *chat_id, char *buf, size_t size
 
 OPERATE_RET session_clear(const char *chat_id)
 {
-    if (!chat_id || chat_id[0] == '\0') {
+    TUYA_CHECK_NULL_RETURN(chat_id, OPRT_INVALID_PARM);
+    if (chat_id[0] == '\0') {
         return OPRT_INVALID_PARM;
     }
     /* Path traversal protection */

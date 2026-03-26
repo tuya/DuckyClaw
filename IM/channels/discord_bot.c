@@ -612,9 +612,9 @@ static void handle_message_create_event(cJSON *event)
         return;
     }
 
-    const char *channel_id      = cJSON_GetStringValue(cJSON_GetObjectItem(event, "channel_id"));
-    const char *message_id      = cJSON_GetStringValue(cJSON_GetObjectItem(event, "id"));
-    const char *content         = cJSON_GetStringValue(cJSON_GetObjectItem(event, "content"));
+    const char *channel_id      = im_json_str(event, "channel_id", NULL);
+    const char *message_id      = im_json_str(event, "id", NULL);
+    const char *content         = im_json_str(event, "content", NULL);
     cJSON      *attachments     = cJSON_GetObjectItem(event, "attachments");
     bool        has_attachments = cJSON_IsArray(attachments) && cJSON_GetArraySize(attachments) > 0;
 
@@ -694,7 +694,7 @@ static OPERATE_RET handle_gateway_payload(dc_gateway_conn_t *conn, const char *j
         IM_LOGW(TAG, "discord gateway requested reconnect op=%d", op);
         rt = OPRT_COM_ERROR;
     } else if (op == 0) {
-        const char *event_type = cJSON_GetStringValue(cJSON_GetObjectItem(root, "t"));
+        const char *event_type = im_json_str(root, "t", NULL);
         cJSON      *d          = cJSON_GetObjectItem(root, "d");
 
         if (event_type && strcmp(event_type, "READY") == 0) {
@@ -702,8 +702,8 @@ static OPERATE_RET handle_gateway_payload(dc_gateway_conn_t *conn, const char *j
             const char *uname = NULL;
             cJSON      *user  = d ? cJSON_GetObjectItem(d, "user") : NULL;
             if (user) {
-                uid   = cJSON_GetStringValue(cJSON_GetObjectItem(user, "id"));
-                uname = cJSON_GetStringValue(cJSON_GetObjectItem(user, "username"));
+                uid   = im_json_str(user, "id", NULL);
+                uname = im_json_str(user, "username", NULL);
             }
             IM_LOGI(TAG, "discord gateway READY user=%s(%s)", uname ? uname : "", uid ? uid : "");
         } else if (event_type && strcmp(event_type, "MESSAGE_CREATE") == 0) {
@@ -1122,7 +1122,7 @@ static void parse_message_id(const char *json_str, char *msg_id, size_t msg_id_s
         return;
     }
 
-    const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(root, "id"));
+    const char *id = im_json_str(root, "id", NULL);
     if (id && id[0] != '\0') {
         im_safe_copy(msg_id, msg_id_size, id);
     }
