@@ -113,6 +113,11 @@ static turn_state_t s_turn = {0};
 static char        *s_last_response      = NULL;
 static MUTEX_HANDLE s_last_response_lock = NULL;
 
+/* Mention targets from the current inbound turn (Feishu @-mentions).
+ * Serialised JSON array, heap-allocated, freed at end of each turn. */
+static char        *s_turn_mentions_json = NULL;
+static MUTEX_HANDLE s_mentions_lock      = NULL;
+
 /* True while the inner loop is active (i.e. we are in a tool-use iteration).
  * ducky_claw_chat.c uses this to suppress mid-stream overflow flushes. */
 static volatile bool s_in_tool_loop = false;
@@ -224,6 +229,10 @@ static void __on_tool_executed(const char *tool_name, OPERATE_RET rt,
         s_turn.tool_result[TOOL_RESULT_BUF_SIZE - 1] = '\0';
         tal_mutex_unlock(s_turn.lock);
     }
+
+    /* Suppress TTS and UI output for the remainder of this iteration. */
+    ai_agent_set_tts_suppressed(TRUE);
+    ai_chat_ui_set_output_suppressed(TRUE);
 }
 
 /**
@@ -395,8 +404,21 @@ static void agent_loop_task(void *arg)
             continue;
         }
 
-        if (in.chat_id[0] != '\0') {
-            app_im_set_chat_id(in.chat_id);
+        app_im_set_target(in.channel, in.chat_id);
+
+        /* Save mention targets for this turn so the final reply can @-mention them */
+        if (s_mentions_lock) {
+            tal_mutex_lock(s_mentions_lock);
+            claw_free(s_turn_mentions_json);
+            s_turn_mentions_json = NULL;
+            if (in.mentions_json && in.mentions_json[0] != '\0') {
+                size_t mlen = strlen(in.mentions_json) + 1;
+                s_turn_mentions_json = claw_malloc(mlen);
+                if (s_turn_mentions_json) {
+                    memcpy(s_turn_mentions_json, in.mentions_json, mlen);
+                }
+            }
+            tal_mutex_unlock(s_mentions_lock);
         }
 
         PR_INFO("===== AGENT TURN START channel=%s =====", in.channel);
@@ -419,10 +441,7 @@ static void agent_loop_task(void *arg)
             tal_mutex_unlock(s_last_response_lock);
         }
 
-        /* Drain any stale semaphore counts left over from the previous turn.
-         * AI_USER_EVT_END may fire after the inner loop has already exited,
-         * leaving a residual count that would cause the next turn's wait() to
-         * return immediately with stale data. */
+        /* Drain any stale semaphore counts left over from the previous turn. */
         while (tal_semaphore_wait(s_turn.sem, 0) == OPRT_OK) {
             PR_WARN("Drained stale semaphore count before new turn");
         }
@@ -442,6 +461,10 @@ static void agent_loop_task(void *arg)
                 s_turn.tool_result[0] = '\0';
                 tal_mutex_unlock(s_turn.lock);
             }
+
+            /* Restore TTS and UI output for this iteration. */
+            ai_agent_set_tts_suppressed(FALSE);
+            ai_chat_ui_set_output_suppressed(FALSE);
 
             /* On the last allowed iteration, ask the AI to summarise instead of
              * calling more tools.  iteration is 0-based so the last slot is
@@ -475,12 +498,29 @@ static void agent_loop_task(void *arg)
             PR_INFO("LLM iteration=%d tool_called=%d is_last=%d", iteration + 1, called, is_last);
 
             if (!called || is_last) {
-                /* No tool call (or forced summary round) → forward final response to IM */
-                PR_INFO("Forwarding final response to IM (no_tool=%d is_last=%d)", !called, is_last);
+                /* No tool call (or forced summary round) → route final response */
+                // PR_INFO("Routing final response target=%s chat_id=%s (no_tool=%d is_last=%d)",
+                //         app_im_get_channel() ? app_im_get_channel() : "(null)",
+                //         app_im_get_chat_id() ? app_im_get_chat_id() : "(null)",
+                //         !called, is_last);
                 if (s_last_response && s_last_response_lock) {
                     tal_mutex_lock(s_last_response_lock);
                     if (s_last_response[0] != '\0') {
-                        app_im_bot_send_message(s_last_response);
+                        char *mentions_copy = NULL;
+                        if (s_mentions_lock) {
+                            tal_mutex_lock(s_mentions_lock);
+                            if (s_turn_mentions_json) {
+                                size_t mlen = strlen(s_turn_mentions_json) + 1;
+                                mentions_copy = claw_malloc(mlen);
+                                if (mentions_copy) {
+                                    memcpy(mentions_copy, s_turn_mentions_json, mlen);
+                                }
+                            }
+                            tal_mutex_unlock(s_mentions_lock);
+                        }
+                        app_im_bot_send_message_with_mentions(s_last_response, mentions_copy);
+
+                        claw_free(mentions_copy);
                     }
                     tal_mutex_unlock(s_last_response_lock);
                 }
@@ -497,6 +537,7 @@ static void agent_loop_task(void *arg)
         PR_INFO("===== AGENT TURN END iterations=%d =====", iteration + 1);
 
         claw_free(in.content);
+        claw_free(in.mentions_json);
     }
 }
 
@@ -561,6 +602,7 @@ OPERATE_RET agent_loop_init(void)
     }
     memset(s_last_response, 0, LAST_RESPONSE_MAX);
     TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_last_response_lock));
+    TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_mentions_lock));
 
     ai_mcp_server_set_tool_exec_hook(__on_tool_executed, NULL);
 

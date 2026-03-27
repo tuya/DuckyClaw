@@ -44,16 +44,29 @@
 #if defined(ENABLE_COMP_AI_AUDIO) && (ENABLE_COMP_AI_AUDIO == 1)
 static uint16_t __s_audio_codec_type = AI_AUDIO_CODEC_MP3;
 #endif
+
+/* TTS suppression flag. */
+static volatile BOOL_T s_tts_suppressed = FALSE;
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
 /**
-@brief Callback function for AI agent events
-@param type Event type
-@param ptype Packet type
-@param eid Event ID
-@return OPERATE_RET Operation result
-*/
+ * @brief Set TTS output suppression state.
+ * @param[in] suppressed TRUE to suppress TTS; FALSE to allow it.
+ * @return none
+ */
+VOID_T ai_agent_set_tts_suppressed(BOOL_T suppressed)
+{
+    s_tts_suppressed = suppressed;
+}
+
+/**
+ * @brief Callback function for AI agent events.
+ * @param[in] type Event type
+ * @param[in] ptype Packet type
+ * @param[in] eid Event ID
+ * @return OPRT_OK on success
+ */
 OPERATE_RET __ai_agent_event_cb(AI_EVENT_TYPE type, AI_PACKET_PT ptype, AI_EVENT_ID eid)
 {
     PR_DEBUG("ai agent -> recv event type: %d", type);
@@ -63,6 +76,11 @@ OPERATE_RET __ai_agent_event_cb(AI_EVENT_TYPE type, AI_PACKET_PT ptype, AI_EVENT
 #if defined(ENABLE_COMP_AI_AUDIO) && (ENABLE_COMP_AI_AUDIO == 1)
             /* Start audio player */
             ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_START, __s_audio_codec_type, (char*)eid, strlen(eid));
+            // if (!s_tts_suppressed) {
+            //     ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_START, __s_audio_codec_type, (char*)eid, strlen(eid));
+            // } else {
+            //     PR_DEBUG("TTS suppressed, playing audio player start");
+            // }
 #endif
         }
     } else if ((AI_EVENT_CHAT_BREAK == type)) {
@@ -71,18 +89,21 @@ OPERATE_RET __ai_agent_event_cb(AI_EVENT_TYPE type, AI_PACKET_PT ptype, AI_EVENT
         ai_audio_player_stop(AI_AUDIO_PLAYER_FG);
 #endif
         ai_user_event_notify(AI_USER_EVT_CHAT_BREAK, NULL);
-    }else if(AI_EVENT_SERVER_VAD == type) {
-		ai_user_event_notify(AI_USER_EVT_SERVER_VAD, NULL);
+    } else if (AI_EVENT_SERVER_VAD == type) {
+        ai_user_event_notify(AI_USER_EVT_SERVER_VAD, NULL);
     } else if ((AI_EVENT_END == type)) {
         if (AI_PT_AUDIO == ptype) {
 #if defined(ENABLE_COMP_AI_AUDIO) && (ENABLE_COMP_AI_AUDIO == 1)
             /* Stop audio player */
             ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_STOP, __s_audio_codec_type, (char*)eid, strlen(eid));
+            // if (!s_tts_suppressed) {
+            //     ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_STOP, __s_audio_codec_type, (char*)eid, strlen(eid));
+            // } else {
+            //     PR_DEBUG("TTS suppressed, playing audio player stop");
+            // }
 #endif
         }
-        /* Notify upper layer that the full AI turn (including all MCP tool
-         * calls) has completed. agent_loop uses this to unblock the inner
-         * tool-use loop and decide whether to forward the response to IM. */
+        /* Notify upper layer that the AI turn has completed. */
         ai_user_event_notify(AI_USER_EVT_END, NULL);
     } else if (AI_EVENT_CHAT_EXIT == type) {
         /* Stop audio player */
@@ -133,7 +154,13 @@ OPERATE_RET __ai_agent_media_data_cb(AI_PACKET_PT type, char *data, uint32_t len
     OPERATE_RET rt = OPRT_OK;
     if(type == AI_PT_AUDIO) {
 #if defined(ENABLE_COMP_AI_AUDIO) && (ENABLE_COMP_AI_AUDIO == 1)
+        /* Suppress audio playback if TTS is suppressed. */
         rt = ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_DATA, __s_audio_codec_type, (char*)data, len);
+        // if (!s_tts_suppressed) {
+        //     rt = ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_DATA, __s_audio_codec_type, (char*)data, len);
+        // } else {
+        //     PR_DEBUG("TTS suppressed, skipping audio player data");
+        // }
 #endif
     } else if(type == AI_PT_VIDEO) {
         /* TBD */

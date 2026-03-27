@@ -8,11 +8,14 @@
 
 #include "netmgr.h"
 
+#include "ai_agent.h"
 #include "ai_chat_main.h"
 #include "ducky_claw_chat.h"
 #include "agent_loop.h"
+#include "acp_client.h"
 
 #include "app_im.h"
+#include "im_api.h"
 #include "tal_log.h"
 
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
@@ -44,6 +47,7 @@ static TIMER_ID            sg_disp_status_tm;
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
+
 static void __printf_free_heap_tm_cb(TIMER_ID timer_id, void *arg)
 {
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
@@ -170,6 +174,41 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
 
 
     switch (event->type) {
+    case AI_USER_EVT_ASR_OK: {
+        /* Restore TTS and UI output for this iteration. */
+        ai_agent_set_tts_suppressed(FALSE);
+        ai_chat_ui_set_output_suppressed(FALSE);
+#if 0
+        AI_NOTIFY_TEXT_T *asr = (AI_NOTIFY_TEXT_T *)event->data;
+        if (!asr || asr->datalen == 0 || !asr->data) {
+            break;
+        }
+        char *asr_text = (CHAR_T *)tal_malloc(asr->datalen + 1);
+        if (asr_text) {
+            memcpy(asr_text, asr->data, asr->datalen);
+            asr_text[asr->datalen] = '\0';
+            PR_DEBUG("[acp] asr inbound: %.64s", asr_text);
+
+            im_msg_t msg = {0};
+            const char *channel = app_im_get_channel();
+            const char *chat_id = app_im_get_chat_id();
+            if (channel && channel[0] != '\0') {
+                strncpy(msg.channel, channel, sizeof(msg.channel) - 1);
+                msg.channel[sizeof(msg.channel) - 1] = '\0';
+            }
+            if (chat_id && chat_id[0] != '\0') {
+                strncpy(msg.chat_id, chat_id, sizeof(msg.chat_id) - 1);
+                msg.chat_id[sizeof(msg.chat_id) - 1] = '\0';
+            }
+            PR_DEBUG("asr inbound: channel=%s chat_id=%s", msg.channel, msg.chat_id);
+            msg.content = asr_text;
+            if (message_bus_push_inbound(&msg) != OPRT_OK) {
+                PR_ERR("message_bus_push_inbound failed");
+                tal_free(asr_text);
+            }
+        }
+#endif
+    } break;
     case AI_USER_EVT_TEXT_STREAM_START: {
         if (stream_data == NULL) {
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)

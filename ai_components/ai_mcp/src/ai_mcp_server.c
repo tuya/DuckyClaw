@@ -1066,6 +1066,8 @@ static OPERATE_RET __handle_tools_list(cJSON *params, const char *id)
                 break;
             }
             json_len += tool_len;
+            PR_NOTICE("[MCP] tools_list: added tool '%s' (current=%d, new=%d), nextCursor='%s'", 
+                         tool->name, json_len, tool_len, tool->next ? tool->next->name : NULL);
             cJSON_free(tool_str);
         }
 
