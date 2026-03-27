@@ -11,6 +11,7 @@
 #include "tools_register.h"
 #include "tool_files.h"
 #include "tool_cron.h"
+#include "tool_openclaw_ctrl.h"
 #include "cron_service.h"
 #include "heartbeat.h"
 #include "memory_manager.h"
@@ -66,6 +67,9 @@ static OPERATE_RET __ai_mcp_init(void *data)
     #if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
     TUYA_CALL_ERR_RETURN(tool_exec_register());
     #endif
+
+    /* Register OpenClaw/PC control tool */
+    TUYA_CALL_ERR_RETURN(tool_openclaw_ctrl_register());
 
     PR_DEBUG("MCP Server initialized successfully with tools");
     return rt;

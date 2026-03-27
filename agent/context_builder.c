@@ -94,51 +94,6 @@ size_t context_build_system_prompt(char *buf, size_t size)
                     "4. NEVER invent data you haven't retrieved via a tool "
                     "(e.g. task lists, file contents, time, search results).\n\n");
 
-    off += snprintf(buf + off, size - off,
-                    "## Available Tools\n"
-                    "Below is the COMPLETE list of tools you can call. "
-                    "You have NO other capabilities beyond these tools and conversation.\n\n");
-
-    off += snprintf(buf + off, size - off,
-                    "- web_search: Search the web. "
-                    "Use for up-to-date facts, news, weather, or anything beyond your training data.\n");
-
-    off += snprintf(buf + off, size - off,
-                    "- get_current_time: Get the current date and time. "
-                    "You do NOT have an internal clock. ALWAYS call this tool when you need the time or date.\n");
-
-#if CLAW_FS_ROOT_PATH_EMPTY
-    off += snprintf(buf + off, size - off,
-                    "- read_file: Read a file (path must start with \"/\").\n"
-                    "- write_file: Write/overwrite a file.\n"
-                    "- edit_file: Find-and-replace edit a file.\n"
-                    "- list_dir: List files, optionally filter by prefix.\n"
-                    "- find_path: Search for a file/directory by name (fuzzy match).\n");
-#else
-    off += snprintf(buf + off, size - off,
-                    "- read_file: Read a file (path must start with " CLAW_FS_ROOT_PATH "/).\n"
-                    "- write_file: Write/overwrite a file on " CLAW_FS_ROOT_PATH ".\n"
-                    "- edit_file: Find-and-replace edit a file on " CLAW_FS_ROOT_PATH ".\n"
-                    "- list_dir: List files on " CLAW_FS_ROOT_PATH ".\n"
-                    "- find_path: Search for a file/directory by name under " CLAW_FS_ROOT_PATH " (fuzzy match).\n");
-#endif
-
-    off += snprintf(buf + off, size - off,
-                    "- time_to_epoch: Convert a local date/time to a UTC epoch (for debugging/query).\n"
-                    "- cron_add: Schedule a recurring or one-shot reminder. "
-                    "For 'at' type: pass hour, minute (and optionally year/month/day). "
-                    "Device computes epoch internally — do NOT compute epoch yourself.\n"
-                    "- cron_list: List all scheduled cron jobs. "
-                    "MUST call this tool when the user asks about tasks/reminders.\n"
-                    "- cron_remove: Remove a scheduled cron job by ID.\n\n");
-
-    off += snprintf(buf + off, size - off,
-                    "## When to Use Tools (mandatory)\n"
-                    "- Setting a reminder at a specific time -> cron_add (pass hour/minute directly)\n"
-                    "- Listing/removing reminders -> cron_list / cron_remove\n"
-                    "- Reading/writing/finding files -> read_file / write_file / find_path / list_dir\n"
-                    "- Asking current time or date -> get_current_time\n"
-                    "- Searching the web -> web_search\n\n");
 
     off += snprintf(buf + off, size - off,
                     "## Memory\n"

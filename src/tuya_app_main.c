@@ -47,6 +47,7 @@
 #include "cli/serial_cli.h"
 #include "tools_register.h"
 #include "ws_server.h"
+#include "acp_client.h"
 #include "agent_loop.h"
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
@@ -196,6 +197,15 @@ void user_event_handler_on(tuya_iot_client_t *client, tuya_event_msg_t *event)
     /* MQTT with tuya cloud is connected, device online */
     case TUYA_EVENT_MQTT_CONNECTED:
         PR_INFO("Device MQTT Connected!");
+        NW_IP_S ip;
+        memset(&ip, 0, sizeof(ip));
+    
+        OPERATE_RET op_ret = tal_wifi_get_ip(WF_STATION, &ip);
+        // PR_INFO("acp client init ip=%s", ip.ip);
+        if (OPRT_OK != op_ret) {
+            PR_ERR("get ip fail:%d", op_ret);
+            op_ret = OPRT_NOT_FOUND;
+        }
         tal_event_publish(EVENT_MQTT_CONNECTED, NULL);
 
         static uint8_t first = 1;
@@ -384,6 +394,11 @@ void user_main(void)
     ret = tool_registry_init();
     if (ret != OPRT_OK) {
         PR_ERR("tool_registry_init failed rt:%d", ret);
+    }
+
+    ret = acp_client_init();
+    if (ret != OPRT_OK) {
+        PR_ERR("acp_client_init failed rt:%d", ret);
     }
 
     ret = agent_loop_init();

@@ -99,6 +99,13 @@ OPERATE_RET ai_chat_set_volume(int volume);
 */
 int ai_chat_get_volume(void);
 
+/**
+@brief Set UI output suppression state.
+@param[in] suppressed TRUE to suppress UI output; FALSE to allow it.
+@return none
+*/
+VOID_T ai_chat_ui_set_output_suppressed(BOOL_T suppressed);
+
 #ifdef __cplusplus
 }
 #endif

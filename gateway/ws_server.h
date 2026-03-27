@@ -4,8 +4,8 @@
  *
  * Provides a lightweight WebSocket server that accepts external client
  * connections. Text messages received from clients are forwarded to the
- * AI agent via ai_agent_send_text(). Responses can be pushed back
- * through ws_server_send().
+ * message_bus so agent_loop can process them uniformly. Responses can be
+ * pushed back to a specific client through ws_server_send().
  *
  * Ported from TuyaOpen/apps/mimiclaw/gateway.
  */

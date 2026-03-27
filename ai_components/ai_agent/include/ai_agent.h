@@ -81,6 +81,16 @@ OPERATE_RET ai_agent_cloud_alert(AI_ALERT_TYPE_E type);
 */
 OPERATE_RET ai_agent_role_switch(char *role);
 
+/**
+ * @brief Set TTS output suppression state.
+ * @param[in] suppressed TRUE to suppress TTS; FALSE to allow it.
+ * @return none
+ * @note Called by agent_loop when a tool fires (suppressed=TRUE) and at the
+ *       start of each new inner iteration (suppressed=FALSE).  The module
+ *       stores the flag locally so it does not need to query agent_loop.
+ */
+VOID_T ai_agent_set_tts_suppressed(BOOL_T suppressed);
+
 #ifdef __cplusplus
 }
 #endif

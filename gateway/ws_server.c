@@ -6,14 +6,15 @@
  * Key adaptations:
  *   - MIMI_LOG* → PR_INFO / PR_WARN / PR_ERR / PR_DEBUG
  *   - MIMI_WS_* → CLAW_WS_* (defined in ws_server.h)
- *   - message_bus_push_inbound → ai_agent_send_text
+ *   - Inbound text messages are injected into the message_bus (channel="ws")
+ *     so they flow through agent_loop like Feishu / cron messages.
  *   - Removed mimi_config.h / mimi_base.h dependencies
  */
 
 #include "ws_server.h"
 #include "tuya_app_config.h"
 #include "tool_files.h"
-#include "ai_agent.h"
+#include "bus/message_bus.h"
 #include "cJSON.h"
 #include "mix_method.h"
 #include "tal_hash.h"
@@ -505,7 +506,26 @@ static void ws_handle_text_message_locked(ws_client_t *client,
 
     /* Forward message text to the AI agent */
     PR_INFO("ws inbound chat_id=%s content=%.64s...", client->chat_id, content->valuestring);
-    ai_agent_send_text(content->valuestring);
+
+    size_t clen = strlen(content->valuestring);
+    char  *cbuf = claw_malloc(clen + 1);
+    if (!cbuf) {
+        PR_ERR("ws: malloc failed for inbound content");
+        cJSON_Delete(root);
+        return;
+    }
+    memcpy(cbuf, content->valuestring, clen);
+    cbuf[clen] = '\0';
+
+    im_msg_t msg = {0};
+    snprintf(msg.channel, sizeof(msg.channel), "%s", IM_CHAN_WS);
+    snprintf(msg.chat_id, sizeof(msg.chat_id), "%s", client->chat_id);
+    msg.content = cbuf;
+
+    if (message_bus_push_inbound(&msg) != OPRT_OK) {
+        PR_ERR("ws: message_bus_push_inbound failed");
+        claw_free(cbuf);
+    }
 
     cJSON_Delete(root);
 }
