@@ -28,6 +28,10 @@
 ***********************function define**********************
 ***********************************************************/
 static bool __get_int_prop(const MCP_PROPERTY_LIST_T *properties, const char *name, int *out);
+static OPERATE_RET __resolve_local_datetime_to_epoch(int year, int month, int day,
+                                                     int hour, int minute, int second,
+                                                     int64_t *epoch_out, char *result,
+                                                     size_t result_size);
 /**
  * __to_local_tm - Convert a UTC epoch to local broken-down time.
  * @epoch:          UTC Unix timestamp (int64_t); pass 0 for current time.
@@ -118,38 +122,17 @@ static int64_t __local_datetime_to_epoch(int year, int month, int day,
     return utc_epoch;
 }
 
-/**
- * __tool_time_to_epoch - MCP tool callback: time_to_epoch
- *
- * Converts a user-specified local datetime (year/month/day/hour/minute/second)
- * to a UTC Unix epoch.  All arithmetic is done on the device so the cloud AI
- * never has to perform timezone or calendar math.
- *
- * The AI extracts the date/time fields from the user's natural-language request
- * and passes them as integer parameters.  The tool returns the exact epoch to
- * use in cron_add's at_epoch field.
- */
-static OPERATE_RET __tool_time_to_epoch(const MCP_PROPERTY_LIST_T *properties,
-                                        MCP_RETURN_VALUE_T *ret_val, void *user_data)
+static OPERATE_RET __resolve_local_datetime_to_epoch(int year, int month, int day,
+                                                     int hour, int minute, int second,
+                                                     int64_t *epoch_out, char *result,
+                                                     size_t result_size)
 {
-    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
-
-    /* year, month, day are required */
-    if (!__get_int_prop(properties, "year",   &year)  ||
-        !__get_int_prop(properties, "month",  &month) ||
-        !__get_int_prop(properties, "day",    &day)) {
-        ai_mcp_return_value_set_str(ret_val,
-            "Error: year, month, day are required");
+    if (!epoch_out) {
         return OPRT_INVALID_PARM;
     }
 
-    /* hour, minute, second are optional (default 0) */
-    __get_int_prop(properties, "hour",   &hour);
-    __get_int_prop(properties, "minute", &minute);
-    __get_int_prop(properties, "second", &second);
-
-    /* If year not provided (e.g. AI omits it), fill from current local time */
-    if (year < 1970) {
+    /* Fill missing date fields from current local time. */
+    if (year < 1970 || month <= 0 || day <= 0) {
         TIME_T now = tal_time_get_posix();
         POSIX_TM_S tm_now;
         memset(&tm_now, 0, sizeof(tm_now));
@@ -161,15 +144,15 @@ static OPERATE_RET __tool_time_to_epoch(const MCP_PROPERTY_LIST_T *properties,
 
     int64_t epoch = __local_datetime_to_epoch(year, month, day, hour, minute, second);
     if (epoch < 0) {
-        char err[128];
-        snprintf(err, sizeof(err),
-                 "Error: invalid datetime %04d-%02d-%02d %02d:%02d:%02d",
-                 year, month, day, hour, minute, second);
-        ai_mcp_return_value_set_str(ret_val, err);
+        if (result && result_size > 0) {
+            snprintf(result, result_size,
+                     "Error: invalid datetime %04d-%02d-%02d %02d:%02d:%02d",
+                     year, month, day, hour, minute, second);
+        }
         return OPRT_INVALID_PARM;
     }
+    *epoch_out = epoch;
 
-    /* Also verify against current time and return a human-readable confirmation */
     TIME_T now_t = tal_time_get_posix();
     int64_t now  = (int64_t)now_t;
     int64_t diff = epoch - now;
@@ -181,22 +164,22 @@ static OPERATE_RET __tool_time_to_epoch(const MCP_PROPERTY_LIST_T *properties,
     int tz_m = (tz_sec < 0 ? -tz_sec : tz_sec) % 3600 / 60;
     snprintf(tz_label, sizeof(tz_label), "UTC%+d:%02d", tz_h, tz_m);
 
-    char result[256];
-    if (diff < 0) {
-        snprintf(result, sizeof(result),
-                 "epoch=%lld (local: %04d-%02d-%02d %02d:%02d:%02d %s) "
-                 "WARNING: this time is %lld seconds in the past.",
-                 (long long)epoch, year, month, day, hour, minute, second,
-                 tz_label, (long long)(-diff));
-    } else {
-        snprintf(result, sizeof(result),
-                 "epoch=%lld (local: %04d-%02d-%02d %02d:%02d:%02d %s, "
-                 "in %lld seconds from now)",
-                 (long long)epoch, year, month, day, hour, minute, second,
-                 tz_label, (long long)diff);
+    if (result && result_size > 0) {
+        if (diff < 0) {
+            snprintf(result, result_size,
+                     "epoch=%lld (local: %04d-%02d-%02d %02d:%02d:%02d %s) "
+                     "WARNING: this time is %lld seconds in the past.",
+                     (long long)epoch, year, month, day, hour, minute, second,
+                     tz_label, (long long)(-diff));
+        } else {
+            snprintf(result, result_size,
+                     "epoch=%lld (local: %04d-%02d-%02d %02d:%02d:%02d %s, "
+                     "in %lld seconds from now)",
+                     (long long)epoch, year, month, day, hour, minute, second,
+                     tz_label, (long long)diff);
+        }
     }
 
-    ai_mcp_return_value_set_str(ret_val, result);
     PR_DEBUG("time_to_epoch: %04d-%02d-%02d %02d:%02d:%02d -> epoch=%lld",
              year, month, day, hour, minute, second, (long long)epoch);
     return OPRT_OK;
@@ -226,8 +209,10 @@ static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties
     char result[256];
     snprintf(result, sizeof(result),
              "Current time: %04d-%02d-%02d %02d:%02d:%02d %s (UTC epoch=%lld). "
-             "To schedule at a specific date/time, call time_to_epoch with the "
-             "desired year/month/day/hour/minute, then pass the returned epoch to cron_add.",
+             "To schedule a reminder, call cron_add with the desired "
+             "year/month/day/hour/minute/second. For relative delays such as "
+             "'in 5 minutes', first compute the next absolute local time, then "
+             "pass those fields directly to cron_add.",
              tm_local.tm_year + 1900, tm_local.tm_mon + 1, tm_local.tm_mday,
              tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec,
              tz_label, (long long)now);
@@ -328,51 +313,38 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
     } else if (strcmp(schedule_type, "at") == 0) {
         job.kind = CRON_KIND_AT;
 
-        /* Try datetime parameters first (hour/minute), fall back to at_epoch */
+        /* Compute at_epoch inside cron_add from local datetime fields.
+         * at_epoch is kept as a compatibility fallback for older callers. */
         int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+        int at_epoch = 0;
+        bool has_at_epoch = __get_int_prop(properties, "at_epoch", &at_epoch) && at_epoch > 0;
+
         bool has_hour   = __get_int_prop(properties, "hour",   &hour);
         bool has_minute = __get_int_prop(properties, "minute", &minute);
 
         if (has_hour || has_minute) {
-            /* Datetime mode: device computes epoch from local time fields */
+            char err_msg[160];
+
             __get_int_prop(properties, "year",   &year);
             __get_int_prop(properties, "month",  &month);
             __get_int_prop(properties, "day",    &day);
             __get_int_prop(properties, "second", &second);
 
-            /* Fill missing date fields from current local time */
-            if (year < 1970 || month <= 0 || day <= 0) {
-                TIME_T now_t = tal_time_get_posix();
-                POSIX_TM_S tm_now;
-                memset(&tm_now, 0, sizeof(tm_now));
-                tal_time_get_local_time_custom(now_t, &tm_now);
-                if (year < 1970)  year  = tm_now.tm_year + 1900;
-                if (month <= 0)   month = tm_now.tm_mon  + 1;
-                if (day   <= 0)   day   = tm_now.tm_mday;
-            }
-
-            int64_t epoch = __local_datetime_to_epoch(year, month, day,
-                                                      hour, minute, second);
-            if (epoch < 0) {
-                char err_msg[128];
-                snprintf(err_msg, sizeof(err_msg),
-                         "Error: invalid datetime %04d-%02d-%02d %02d:%02d:%02d",
-                         year, month, day, hour, minute, second);
+            if (__resolve_local_datetime_to_epoch(year, month, day,
+                                                  hour, minute, second,
+                                                  &job.at_epoch, err_msg,
+                                                  sizeof(err_msg)) != OPRT_OK) {
                 ai_mcp_return_value_set_str(ret_val, err_msg);
                 return OPRT_INVALID_PARM;
             }
-            job.at_epoch = epoch;
-            PR_DEBUG("cron_add: datetime %04d-%02d-%02d %02d:%02d:%02d -> epoch=%lld",
-                     year, month, day, hour, minute, second, (long long)epoch);
-        } else {
-            /* Fallback: use at_epoch directly */
-            int at_epoch = 0;
-            if (!__get_int_prop(properties, "at_epoch", &at_epoch) || at_epoch <= 0) {
-                ai_mcp_return_value_set_str(ret_val,
-                    "Error: 'at' schedule requires hour/minute or at_epoch");
-                return OPRT_INVALID_PARM;
-            }
+        } else if (has_at_epoch) {
             job.at_epoch = (int64_t)at_epoch;
+            PR_DEBUG("cron_add: using compatibility at_epoch=%d", at_epoch);
+        } else {
+            ai_mcp_return_value_set_str(ret_val,
+                "Error: 'at' schedule requires year/month/day/hour/minute "
+                "or compatibility at_epoch");
+            return OPRT_INVALID_PARM;
         }
 
         int64_t now = (int64_t)tal_time_get_posix();
@@ -563,53 +535,12 @@ OPERATE_RET tool_cron_register(void)
         "get_current_time",
         "Get the device's current local date and time (and UTC epoch).\n"
         "Call this when the user asks what time/date it is.\n"
-        "For scheduling a reminder, use time_to_epoch instead to get the at_epoch.",
+        "For reminders, ALWAYS call this tool first if the user gives a relative\n"
+        "delay such as 'in 5 minutes'. Use the returned current time to compute\n"
+        "the next absolute local target time, then call cron_add with those\n"
+        "year/month/day/hour/minute/second fields.",
         __tool_get_current_time,
         NULL
-    ));
-
-    /* time_to_epoch tool */
-    TUYA_CALL_ERR_RETURN(AI_MCP_TOOL_ADD(
-        "time_to_epoch",
-        "Convert a local date/time specified by the user to a UTC Unix epoch.\n"
-        "All calendar and timezone math is done on the device — the AI must NOT compute epoch.\n"
-        "Workflow for scheduling a one-shot reminder:\n"
-        "  1. Extract year/month/day/hour/minute from the user's request.\n"
-        "     - If the user omits the date (e.g. 'at 17:40'), call get_current_time first\n"
-        "       to confirm today's date, then pass it here.\n"
-        "     - If the user omits seconds, pass 0.\n"
-        "  2. Call time_to_epoch with those values → get epoch.\n"
-        "  3. Pass the returned epoch to cron_add as at_epoch.\n"
-        "Parameters:\n"
-        "- year (int): Full year, e.g. 2026 (required).\n"
-        "- month (int): Month 1-12 (required).\n"
-        "- day (int): Day 1-31 (required).\n"
-        "- hour (int): Hour 0-23 (optional, default 0).\n"
-        "- minute (int): Minute 0-59 (optional, default 0).\n"
-        "- second (int): Second 0-59 (optional, default 0).\n"
-        "Response:\n"
-        "- Returns 'epoch=<value>' plus a human-readable confirmation of the local time.\n"
-        "- If the time is in the past, a WARNING is included.",
-        __tool_time_to_epoch,
-        NULL,
-        &(MCP_PROPERTY_DEF_T){ .name = "year",   .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Full year (e.g. 2026)",
-            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
-        &(MCP_PROPERTY_DEF_T){ .name = "month",  .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Month 1-12",
-            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
-        &(MCP_PROPERTY_DEF_T){ .name = "day",    .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Day of month 1-31",
-            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
-        &(MCP_PROPERTY_DEF_T){ .name = "hour",   .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Hour 0-23 (default 0)",
-            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
-        &(MCP_PROPERTY_DEF_T){ .name = "minute", .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Minute 0-59 (default 0)",
-            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
-        &(MCP_PROPERTY_DEF_T){ .name = "second", .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Second 0-59 (default 0)",
-            .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE }
     ));
 
     /* cron_add tool */
@@ -621,16 +552,23 @@ OPERATE_RET tool_cron_register(void)
         "- schedule_type (string): 'every' for recurring or 'at' for one-shot.\n"
         "- message (string): Message content to send when the job fires.\n"
         "- interval_s (int): Interval in seconds (required for 'every' type).\n"
-        "For 'at' type, pass the time directly — the device computes the epoch:\n"
+        "For 'at' type, use this workflow:\n"
+        "  1. If the request is relative (e.g. 'in 5 minutes'), call get_current_time first.\n"
+        "  2. Compute the NEXT absolute local target time.\n"
+        "  3. Call cron_add with year/month/day/hour/minute/second.\n"
+        "  4. cron_add will internally convert that local date/time to the correct epoch.\n"
+        "Primary parameters for 'at' type:\n"
+        "- year (int): Full year, e.g. 2026.\n"
+        "- month (int): Month 1-12.\n"
+        "- day (int): Day 1-31.\n"
         "- hour (int): Hour 0-23.\n"
         "- minute (int): Minute 0-59.\n"
-        "- year/month/day/second (int): Optional. If omitted, today's date and 0 seconds are used.\n"
-        "- at_epoch (int): Alternative — pass a UTC epoch directly (used only if hour/minute are absent).\n"
+        "- second (int): Optional, default 0.\n"
+        "- at_epoch (int): Compatibility fallback for older callers; new flows should not need it.\n"
         "- delete_after_run (bool): Whether to auto-delete after firing (default true for 'at').\n"
-        "For 'at' type, specify the ABSOLUTE target clock time (not a relative offset):\n"
-        "- To schedule 10 minutes from now (e.g. current time 17:44): pass hour=17, minute=54.\n"
-        "- DO NOT pass minute=10 as a relative offset — minute means clock minute 0-59.\n"
-        "- Alternatively, pass at_epoch = current_epoch + delay_seconds.\n"
+        "Important:\n"
+        "- DO NOT pass minute=10 or minute=5 as a relative offset.\n"
+        "- Always convert relative reminders into an absolute local date/time first.\n"
         "Response:\n"
         "- Returns job ID and schedule details on success, including 'Verified in stored list'.\n"
         "- If the response does NOT contain 'Verified in stored list', the file write failed;\n"
@@ -644,10 +582,10 @@ OPERATE_RET tool_cron_register(void)
             .description = "Interval in seconds for 'every' schedule type",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         &(MCP_PROPERTY_DEF_T){ .name = "hour", .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Hour 0-23 for 'at' type",
+            .description = "Absolute local clock hour 0-23 for 'at' type; not a relative offset",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         &(MCP_PROPERTY_DEF_T){ .name = "minute", .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "Minute 0-59 for 'at' type",
+            .description = "Absolute local clock minute 0-59 for 'at' type; not a relative offset like '5 minutes from now'",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         &(MCP_PROPERTY_DEF_T){ .name = "year", .type = MCP_PROPERTY_TYPE_INTEGER,
             .description = "Full year e.g. 2026 (optional, defaults to today)",
@@ -662,7 +600,7 @@ OPERATE_RET tool_cron_register(void)
             .description = "Second 0-59 (optional, default 0)",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         &(MCP_PROPERTY_DEF_T){ .name = "at_epoch", .type = MCP_PROPERTY_TYPE_INTEGER,
-            .description = "UTC epoch (alternative to hour/minute, used only if hour/minute absent)",
+            .description = "UTC epoch compatibility fallback for older callers; new reminder flows should pass local date/time fields instead",
             .has_default = TRUE, .default_val.int_val = 0, .has_range = FALSE },
         MCP_PROP_BOOL_DEF("delete_after_run", "Auto-delete after firing (default true for 'at')", true)
     ));
