@@ -532,7 +532,7 @@ static OPERATE_RET __pi_device_manager_list_devices(cJSON **out_json)
 
 static bool __is_allowed_safe_command(const char *cmd)
 {
-    if (!cmd || cmd[0] == '\0' || CLAW_WS_AUTH_TOKEN == '\0') {
+    if (!cmd || cmd[0] == '\0' || CLAW_WS_AUTH_TOKEN[0] == '\0') {
         PR_ERR("command is empty or auth token is empty");
         return false;
     }

@@ -89,7 +89,7 @@ OPERATE_RET ai_agent_role_switch(char *role);
  *       start of each new inner iteration (suppressed=FALSE).  The module
  *       stores the flag locally so it does not need to query agent_loop.
  */
-VOID_T ai_agent_set_tts_suppressed(BOOL_T suppressed);
+void ai_agent_set_tts_suppressed(bool suppressed);
 
 #ifdef __cplusplus
 }

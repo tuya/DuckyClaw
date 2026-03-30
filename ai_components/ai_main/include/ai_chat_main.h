@@ -104,7 +104,7 @@ int ai_chat_get_volume(void);
 @param[in] suppressed TRUE to suppress UI output; FALSE to allow it.
 @return none
 */
-VOID_T ai_chat_ui_set_output_suppressed(BOOL_T suppressed);
+void ai_chat_ui_set_output_suppressed(bool suppressed);
 
 #ifdef __cplusplus
 }

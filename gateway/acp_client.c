@@ -68,7 +68,7 @@
 /* Maximum ms to wait for a synchronous connect/upgrade response */
 #define ACP_SYNC_RECV_TIMEOUT_MS  10000
 /* Maximum time to wait for one async chat.send final reply */
-#define ACP_ASYNC_REPLY_TIMEOUT_MS  (120 * 1000)
+#define ACP_ASYNC_REPLY_TIMEOUT_MS  (180 * 1000)
 
 #ifndef ACP_CLIENT_WS_MSG_BUF_SIZE
 #define ACP_CLIENT_WS_MSG_BUF_SIZE (32 * 1024)
@@ -1034,7 +1034,7 @@ static OPERATE_RET __acp_queue_reply_to_bus(const char *reply)
 static OPERATE_RET __acp_queue_timeout_to_bus(void)
 {
     static const char timeout_notice[] =
-        "System notification: OpenClaw did not return a final result within 120 seconds. "
+        "System notification: OpenClaw did not return a final result within 180 seconds. "
         "Please tell the user that the previous ACP task timed out or the reply was lost, "
         "and suggest retrying if needed.";
 
@@ -1577,6 +1577,7 @@ static OPERATE_RET __acp_client_init_evt_cb(void *data)
         return rt;
     }
 
+#if defined(ACP_CLIENT_STACK_SIZE) && (ACP_CLIENT_STACK_SIZE > 0)
     THREAD_CFG_T cfg = {0};
     cfg.stackDepth = ACP_CLIENT_STACK_SIZE;
     cfg.priority   = THREAD_PRIO_1;
@@ -1591,6 +1592,7 @@ static OPERATE_RET __acp_client_init_evt_cb(void *data)
         PR_ERR("acp thread create failed rt=%d", rt);
         return rt;
     }
+#endif
 
     PR_INFO("acp client init ok host=%s port=%u",
             OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
@@ -1604,7 +1606,10 @@ static OPERATE_RET __acp_client_init_evt_cb(void *data)
 OPERATE_RET acp_client_init(void)
 {
     PR_INFO("app im wait network...");
-    return tal_event_subscribe(EVENT_MQTT_CONNECTED, "acp_client_init", __acp_client_init_evt_cb, SUBSCRIBE_TYPE_NORMAL);
+#if defined(ACP_CLIENT_STACK_SIZE) && (ACP_CLIENT_STACK_SIZE > 0)
+    tal_event_subscribe(EVENT_MQTT_CONNECTED, "acp_client_init", __acp_client_init_evt_cb, SUBSCRIBE_TYPE_NORMAL);
+#endif
+    return OPRT_OK;
 }
 
 /**

@@ -46,7 +46,7 @@ static uint16_t __s_audio_codec_type = AI_AUDIO_CODEC_MP3;
 #endif
 
 /* TTS suppression flag. */
-static volatile BOOL_T s_tts_suppressed = FALSE;
+static volatile bool s_tts_suppressed = FALSE;
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
@@ -55,7 +55,7 @@ static volatile BOOL_T s_tts_suppressed = FALSE;
  * @param[in] suppressed TRUE to suppress TTS; FALSE to allow it.
  * @return none
  */
-VOID_T ai_agent_set_tts_suppressed(BOOL_T suppressed)
+void ai_agent_set_tts_suppressed(bool suppressed)
 {
     s_tts_suppressed = suppressed;
 }

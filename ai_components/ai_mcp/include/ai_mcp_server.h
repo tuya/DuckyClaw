@@ -93,6 +93,7 @@ typedef struct {
  * @type: Property type
  * @description: Property description (optional)
  * @has_default: Whether property has default value
+ * @is_explicit: Whether the caller explicitly provided this property
  * @default_val: Default value
  * @has_range: Whether integer property has range limits
  * @min_val: Minimum value for integer properties
@@ -103,6 +104,7 @@ typedef struct {
     MCP_PROPERTY_TYPE_E type;
     char *description;
     bool has_default;
+    bool is_explicit;
     MCP_PROPERTY_VALUE_T default_val;
     bool has_range;
     int min_val;
@@ -374,6 +376,16 @@ OPERATE_RET ai_mcp_property_list_add(MCP_PROPERTY_LIST_T *list, MCP_PROPERTY_T *
  * Return: Pointer to property if found, NULL otherwise
  */
 const MCP_PROPERTY_T *ai_mcp_property_list_find(const MCP_PROPERTY_LIST_T *list, const char *name);
+
+/**
+ * ai_mcp_property_was_provided - Check whether a property was explicitly set in tool arguments
+ *
+ * @param[in] list Property list
+ * @param[in] name Property name
+ *
+ * @return true if the caller explicitly provided the property, false otherwise
+ */
+bool ai_mcp_property_was_provided(const MCP_PROPERTY_LIST_T *list, const char *name);
 
 /**
  * ai_mcp_property_list_dup - Duplicate a property list
