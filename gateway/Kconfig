@@ -4,4 +4,10 @@ menu "Gateway (WebSocket) Config"
         default 10240
         help
             Stack size in bytes for the WebSocket server thread (default 10*1024).
+
+    config ACP_CLIENT_STACK_SIZE
+        int "ACP client thread stack size (bytes)"
+        default 10240
+        help
+            Stack size in bytes for the ACP client thread (default 10*1024).
 endmenu

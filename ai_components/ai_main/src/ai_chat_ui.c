@@ -37,14 +37,14 @@
 ***********************************************************/
 
 /* UI output suppression flag. */
-static volatile BOOL_T s_ui_output_suppressed = FALSE;
+static volatile bool s_ui_output_suppressed = FALSE;
 
 /**
  * @brief Set UI output suppression state.
  * @param[in] suppressed TRUE to suppress, FALSE to restore.
  * @return none
  */
-VOID_T ai_chat_ui_set_output_suppressed(BOOL_T suppressed)
+void ai_chat_ui_set_output_suppressed(bool suppressed)
 {
     s_ui_output_suppressed = suppressed;
 }

@@ -28,10 +28,6 @@ extern "C" {
 #define ACP_CLIENT_REPLY_BUF_SIZE (8 * 1024)
 #endif
 
-#ifndef ACP_CLIENT_STACK_SIZE
-#define ACP_CLIENT_STACK_SIZE     (12 * 1024)
-#endif
-
 #ifndef ACP_CLIENT_RECONNECT_MS
 #define ACP_CLIENT_RECONNECT_MS   5000
 #endif

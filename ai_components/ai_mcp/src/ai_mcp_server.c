@@ -183,6 +183,7 @@ OPERATE_RET ai_mcp_property_set_default_bool(MCP_PROPERTY_T *prop, bool value)
         return OPRT_INVALID_PARM;
 
     prop->has_default = true;
+    prop->is_explicit = false;
     prop->default_val.type = MCP_PROPERTY_TYPE_BOOLEAN;
     prop->default_val.bool_val = value;
 
@@ -195,6 +196,7 @@ OPERATE_RET ai_mcp_property_set_default_int(MCP_PROPERTY_T *prop, int value)
         return OPRT_INVALID_PARM;
 
     prop->has_default = true;
+    prop->is_explicit = false;
     prop->default_val.type = MCP_PROPERTY_TYPE_INTEGER;
     prop->default_val.int_val = value;
 
@@ -207,6 +209,7 @@ OPERATE_RET ai_mcp_property_set_default_str(MCP_PROPERTY_T *prop, const char *va
         return OPRT_INVALID_PARM;
 
     prop->has_default = true;
+    prop->is_explicit = false;
     prop->default_val.type = MCP_PROPERTY_TYPE_STRING;
     prop->default_val.str_val = mm_strdup(value);
     if (!prop->default_val.str_val)
@@ -356,6 +359,13 @@ const MCP_PROPERTY_T *ai_mcp_property_list_find(const MCP_PROPERTY_LIST_T *list,
     }
 
     return NULL;
+}
+
+bool ai_mcp_property_was_provided(const MCP_PROPERTY_LIST_T *list, const char *name)
+{
+    const MCP_PROPERTY_T *prop = ai_mcp_property_list_find(list, name);
+
+    return prop ? prop->is_explicit : false;
 }
 
 MCP_PROPERTY_LIST_T *ai_mcp_property_list_dup(const MCP_PROPERTY_LIST_T *src)
@@ -924,6 +934,42 @@ static OPERATE_RET __reply_error(const char *id, int error_code, const char *mes
     return OPRT_OK;
 }
 
+/* Measure the final JSON-RPC response size instead of estimating tool JSON only. */
+static int __measure_reply_result_len(const char *id, const cJSON *result)
+{
+    cJSON *response = NULL;
+    cJSON *result_dup = NULL;
+    char *json_str = NULL;
+    int reply_len = -1;
+
+    if (!id || !result)
+        return -1;
+
+    response = cJSON_CreateObject();
+    if (!response)
+        return -1;
+
+    cJSON_AddStringToObject(response, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(response, "id", id);
+
+    result_dup = cJSON_Duplicate(result, true);
+    if (!result_dup) {
+        cJSON_Delete(response);
+        return -1;
+    }
+
+    cJSON_AddItemToObject(response, "result", result_dup);
+
+    json_str = cJSON_PrintUnformatted(response);
+    if (json_str) {
+        reply_len = strlen(json_str);
+        cJSON_free(json_str);
+    }
+
+    cJSON_Delete(response);
+    return reply_len;
+}
+
 static VOID_T __tool_call(VOID_T *data)
 {
     OPERATE_RET rt;
@@ -1013,7 +1059,7 @@ static OPERATE_RET __handle_tools_list(cJSON *params, const char *id)
     bool found_cursor = false;
     MCP_TOOL_T *tool;
     cJSON *result, *tools_array;
-    int json_len = 0;
+    int reply_len = 0;
 
     /* Parse parameters */
     if (params) {
@@ -1034,13 +1080,14 @@ static OPERATE_RET __handle_tools_list(cJSON *params, const char *id)
         return OPRT_MALLOC_FAILED;
     }
 
+    cJSON_AddItemToObject(result, "tools", tools_array);
+
     found_cursor = (strlen(cursor_str) == 0);
 
     /* Iterate through tools */
     for (tool = s_server_ctx.tools; tool; tool = tool->next) {
         cJSON *tool_json;
-        char *tool_str;
-        int tool_len;
+        int tool_count_before;
 
         /* Skip until we find the cursor */
         if (!found_cursor) {
@@ -1054,27 +1101,36 @@ static OPERATE_RET __handle_tools_list(cJSON *params, const char *id)
         if (!tool_json)
             continue;
 
-        /* Check payload size limit */
-        tool_str = cJSON_PrintUnformatted(tool_json);
-        if (tool_str) {
-            tool_len = strlen(tool_str);
-            if (json_len + tool_len + 100 > MCP_MAX_PAYLOAD_SIZE) {
-                /* Set next cursor and break */
-                cJSON_AddStringToObject(result, "nextCursor", tool->name);
-                cJSON_free(tool_str);
-                cJSON_Delete(tool_json);
-                break;
-            }
-            json_len += tool_len;
-            PR_NOTICE("[MCP] tools_list: added tool '%s' (current=%d, new=%d), nextCursor='%s'", 
-                         tool->name, json_len, tool_len, tool->next ? tool->next->name : NULL);
-            cJSON_free(tool_str);
+        tool_count_before = cJSON_GetArraySize(tools_array);
+        cJSON_AddItemToArray(tools_array, tool_json);
+
+        reply_len = __measure_reply_result_len(id, result);
+        if (reply_len < 0) {
+            cJSON_Delete(result);
+            return OPRT_MALLOC_FAILED;
         }
 
-        cJSON_AddItemToArray(tools_array, tool_json);
+        if (reply_len > MCP_MAX_PAYLOAD_SIZE && tool_count_before > 0) {
+            // PR_DEBUG("[MCP] tools_list: payload limit triggered (replyLen=%d, limit=%d), nextCursor='%s'",
+            //          reply_len, MCP_MAX_PAYLOAD_SIZE, tool->name);
+            cJSON_DeleteItemFromArray(tools_array, tool_count_before);
+            cJSON_AddStringToObject(result, "nextCursor", tool->name);
+            break;
+        }
+
+        if (reply_len > MCP_MAX_PAYLOAD_SIZE) {
+            PR_WARN("[MCP] tools_list: tool '%s' exceeds soft limit alone (replyLen=%d, limit=%d), returning single-item page",
+                    tool->name, reply_len, MCP_MAX_PAYLOAD_SIZE);
+        } else {
+            PR_NOTICE("[MCP] tools_list: added tool '%s' (pageLen=%d, count=%d)",
+                      tool->name, reply_len, tool_count_before + 1);
+        }
     }
 
-    cJSON_AddItemToObject(result, "tools", tools_array);
+    if (!found_cursor && cursor_str[0] != '\0') {
+        PR_WARN("[MCP] tools_list: cursor '%s' not found, returning empty page", cursor_str);
+    }
+
     return __reply_result(id, result);
 }
 
@@ -1108,6 +1164,7 @@ static OPERATE_RET __parse_property_value(MCP_PROPERTY_LIST_T *prop_list,
         prop->default_val.type = MCP_PROPERTY_TYPE_BOOLEAN;
         prop->default_val.bool_val = cJSON_IsTrue(value);
         prop->has_default = true;
+        prop->is_explicit = true;
         break;
 
     case MCP_PROPERTY_TYPE_INTEGER:
@@ -1123,6 +1180,7 @@ static OPERATE_RET __parse_property_value(MCP_PROPERTY_LIST_T *prop_list,
                 return OPRT_INVALID_PARM;
         }
         prop->has_default = true;
+        prop->is_explicit = true;
         break;
 
     case MCP_PROPERTY_TYPE_STRING:
@@ -1135,6 +1193,7 @@ static OPERATE_RET __parse_property_value(MCP_PROPERTY_LIST_T *prop_list,
         if (!prop->default_val.str_val)
             return OPRT_MALLOC_FAILED;
         prop->has_default = true;
+        prop->is_explicit = true;
         break;
 
     default:
