@@ -101,7 +101,7 @@ typedef struct {
 
     char           ws_msg_buf[ACP_CLIENT_WS_MSG_BUF_SIZE];
     size_t         ws_msg_len;
-    BOOL_T         ws_msg_active;
+    bool         ws_msg_active;
 
     /* Accumulates streaming chat content until done=true / state=final */
     char           reply_buf[ACP_CLIENT_REPLY_BUF_SIZE];
@@ -113,12 +113,12 @@ typedef struct {
     MUTEX_HANDLE   state_mutex;
 
     SEM_HANDLE     recv_sem;
-    BOOL_T         recv_requested;
+    bool         recv_requested;
     uint32_t       recv_started_ms;
     char           pending_channel[16];
     char           pending_chat_id[96];
 
-    BOOL_T         stop_requested;
+    bool         stop_requested;
 } acp_ctx_t;
 
 /* ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ static void acp_client_task(void *arg);
 
 static OPERATE_RET __ws_decode_frame(const uint8_t *rx_buf, size_t rx_len,
                                      size_t buf_cap,
-                                     BOOL_T *fin,
+                                     bool *fin,
                                      uint8_t *opcode,
                                      const uint8_t **payload,
                                      size_t *payload_len,
@@ -146,7 +146,7 @@ static void __acp_log_full_text(const char *tag, const char *text, size_t text_l
 static OPERATE_RET __acp_feed_text_frame(uint8_t opcode,
                                          const uint8_t *payload,
                                          size_t payload_len,
-                                         BOOL_T fin,
+                                         bool fin,
                                          const char **message_out,
                                          size_t *message_len_out);
 
@@ -367,7 +367,7 @@ static OPERATE_RET __ws_build_client_key(char *key_out, size_t out_size)
  * @param[in] port  Port (for Host header).
  * @return OPRT_OK if the server accepted the upgrade.
  */
-static OPERATE_RET __ws_upgrade(int fd, const char *host, UINT16_T port)
+static OPERATE_RET __ws_upgrade(int fd, const char *host, uint16_t port)
 {
     char client_key[32] = {0};
     OPERATE_RET rt = __ws_build_client_key(client_key, sizeof(client_key));
@@ -555,7 +555,7 @@ static OPERATE_RET __acp_connect(int fd, char *session_key, size_t sk_size)
 
         /* Try to decode complete WS frames from the accumulated data */
         while (rx_len > 0) {
-            BOOL_T         fin         = FALSE;
+            bool         fin         = FALSE;
             uint8_t        opcode      = 0;
             const uint8_t *ws_payload  = NULL;
             size_t         ws_plen     = 0;
@@ -692,7 +692,7 @@ done:
  */
 static OPERATE_RET __ws_decode_frame(const uint8_t *rx_buf, size_t rx_len,
                                      size_t buf_cap,
-                                     BOOL_T *fin,
+                                     bool *fin,
                                      uint8_t *opcode,
                                      const uint8_t **payload,
                                      size_t *payload_len,
@@ -707,7 +707,7 @@ static OPERATE_RET __ws_decode_frame(const uint8_t *rx_buf, size_t rx_len,
 
     *fin = ((rx_buf[0] & 0x80) != 0) ? TRUE : FALSE;
     uint8_t  op     = (uint8_t)(rx_buf[0] & 0x0F);
-    BOOL_T   masked = (rx_buf[1] & 0x80) != 0;
+    bool   masked = (rx_buf[1] & 0x80) != 0;
     uint64_t plen   = (uint64_t)(rx_buf[1] & 0x7F);
     size_t   off    = 2;
 
@@ -947,7 +947,7 @@ static void __acp_log_full_text(const char *tag, const char *text, size_t text_l
 static OPERATE_RET __acp_feed_text_frame(uint8_t opcode,
                                          const uint8_t *payload,
                                          size_t payload_len,
-                                         BOOL_T fin,
+                                         bool fin,
                                          const char **message_out,
                                          size_t *message_len_out)
 {
@@ -1041,7 +1041,7 @@ static OPERATE_RET __acp_queue_timeout_to_bus(void)
     return __acp_push_notice_to_bus(timeout_notice, "timeout");
 }
 
-static BOOL_T __acp_copy_text(char *dst, size_t dst_size, const char *src)
+static bool __acp_copy_text(char *dst, size_t dst_size, const char *src)
 {
     size_t copy_len;
 
@@ -1059,7 +1059,7 @@ static BOOL_T __acp_copy_text(char *dst, size_t dst_size, const char *src)
     return TRUE;
 }
 
-static BOOL_T __acp_find_text_recursive(cJSON *node, char *dst, size_t dst_size)
+static bool __acp_find_text_recursive(cJSON *node, char *dst, size_t dst_size)
 {
     if (!node || !dst || dst_size == 0) {
         return FALSE;
@@ -1091,7 +1091,7 @@ static BOOL_T __acp_find_text_recursive(cJSON *node, char *dst, size_t dst_size)
     return FALSE;
 }
 
-static BOOL_T __acp_extract_text_from_message(cJSON *message, char *dst, size_t dst_size)
+static bool __acp_extract_text_from_message(cJSON *message, char *dst, size_t dst_size)
 {
     cJSON *content_arr;
     cJSON *part = NULL;
@@ -1120,7 +1120,7 @@ static BOOL_T __acp_extract_text_from_message(cJSON *message, char *dst, size_t 
     return FALSE;
 }
 
-static BOOL_T __acp_is_true_value(cJSON *node)
+static bool __acp_is_true_value(cJSON *node)
 {
     if (!node) {
         return FALSE;
@@ -1134,7 +1134,7 @@ static BOOL_T __acp_is_true_value(cJSON *node)
     return FALSE;
 }
 
-static BOOL_T __acp_event_is_final(cJSON *root, const char *event_name)
+static bool __acp_event_is_final(cJSON *root, const char *event_name)
 {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     cJSON *data    = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "data") : NULL;
@@ -1173,7 +1173,7 @@ static BOOL_T __acp_event_is_final(cJSON *root, const char *event_name)
     return FALSE;
 }
 
-static BOOL_T __acp_extract_event_text(cJSON *root, char *dst, size_t dst_size)
+static bool __acp_extract_event_text(cJSON *root, char *dst, size_t dst_size)
 {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     cJSON *message = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "message") : NULL;
@@ -1225,7 +1225,7 @@ static void __acp_dispatch(const char *text, size_t text_len)
     if (strcmp(type->valuestring, "event") == 0) {
         cJSON *event = cJSON_GetObjectItem(root, "event");
         char   event_text[ACP_CLIENT_REPLY_BUF_SIZE] = {0};
-        BOOL_T is_final = FALSE;
+        bool is_final = FALSE;
 
         if (!cJSON_IsString(event) || !event->valuestring) {
             cJSON_Delete(root);
@@ -1249,7 +1249,7 @@ static void __acp_dispatch(const char *text, size_t text_len)
             OPERATE_RET queue_rt = OPRT_OK;
 
             tal_mutex_lock(s_ctx.state_mutex);
-            BOOL_T recv_requested = s_ctx.recv_requested;
+            bool recv_requested = s_ctx.recv_requested;
             tal_mutex_unlock(s_ctx.state_mutex);
 
             if (recv_requested) {
@@ -1389,7 +1389,7 @@ static void acp_client_task(void *arg)
 
     while (!s_ctx.stop_requested) {
         tal_mutex_lock(s_ctx.state_mutex);
-        BOOL_T recv_requested = s_ctx.recv_requested;
+        bool recv_requested = s_ctx.recv_requested;
         uint32_t recv_started_ms = s_ctx.recv_started_ms;
         tal_mutex_unlock(s_ctx.state_mutex);
 
@@ -1461,7 +1461,7 @@ static void acp_client_task(void *arg)
 
         /* ---- Frame decode loop ---- */
         while (s_ctx.rx_len > 0) {
-            BOOL_T        fin         = FALSE;
+            bool        fin         = FALSE;
             uint8_t       opcode      = 0;
             const uint8_t *payload    = NULL;
             size_t         payload_len = 0;
@@ -1549,7 +1549,7 @@ void acp_client_set_reply_cb(acp_reply_cb_t cb, void *user_data)
     s_ctx.reply_cb_data = user_data;
 }
 
-static OPERATE_RET __acp_client_init_evt_cb(void *data)
+OPERATE_RET __acp_client_init_evt_cb(void *data)
 {
     if (s_ctx.thread) {
         return OPRT_OK;
@@ -1615,18 +1615,6 @@ OPERATE_RET acp_client_init(void)
 /**
  * @brief Send a user message to the OpenClaw agent and trigger an LLM reply.
  *
- * Sends a chat.send ACP request (triggers full agent response):
- * @code
- * {
- *   "type": "req", "id": "N", "method": "chat.send",
- *   "params": {
- *     "sessionKey": "<session_key>",
- *     "message": "<text>",
- *     "idempotencyKey": "device-<req_id>"
- *   }
- * }
- * @endcode
- *
  * @note dev2 uses chat.send directly and treats ACP as a one-question-one-answer
  *       async side channel for openclaw_ctrl.
  * @param[in] text  Message text (ASR result or user input).
@@ -1661,8 +1649,8 @@ OPERATE_RET acp_client_inject(const char *text)
     char id_str[16]       = {0};
     char idem_key[32]     = {0};
     uint32_t req_id = (unsigned)(++s_ctx.req_id_counter);
-    snprintf(id_str,   sizeof(id_str),   "%u", req_id);
-    snprintf(idem_key, sizeof(idem_key), "device-%u", req_id);
+    snprintf(id_str,   sizeof(id_str),   "%lu", req_id);
+    snprintf(idem_key, sizeof(idem_key), "device-%lu", req_id);
 
     __acp_snapshot_pending_route();
 
@@ -1733,7 +1721,7 @@ OPERATE_RET acp_client_stop(void)
  * @return TRUE  if the ACP session is established (hello-ok received).
  * @return FALSE if disconnected or still connecting.
  */
-BOOL_T acp_client_is_connected(void)
+bool acp_client_is_connected(void)
 {
     return (s_ctx.state == ACP_STATE_CONNECTED) ? TRUE : FALSE;
 }

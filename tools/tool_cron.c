@@ -280,14 +280,6 @@ static bool __get_bool_prop(const MCP_PROPERTY_LIST_T *properties, const char *n
 }
 
 /**
- * @brief Helper to check whether a property was explicitly supplied by the tool caller
- */
-static bool __has_explicit_prop(const MCP_PROPERTY_LIST_T *properties, const char *name)
-{
-    return ai_mcp_property_was_provided(properties, name);
-}
-
-/**
  * @brief MCP tool callback: cron_add
  *
  * Adds a new cron job (recurring "every" or one-shot "at").
@@ -336,24 +328,13 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
     } else if (strcmp(schedule_type, "at") == 0) {
         job.kind = CRON_KIND_AT;
 
-        /* Use explicit hour+minute as absolute clock time; otherwise fall back to at_epoch */
+        /* Try datetime parameters first (hour/minute), fall back to at_epoch */
         int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
-        bool has_hour    = __has_explicit_prop(properties, "hour");
-        bool has_minute  = __has_explicit_prop(properties, "minute");
-        bool has_at_epoch = __has_explicit_prop(properties, "at_epoch");
+        bool has_hour   = __get_int_prop(properties, "hour",   &hour);
+        bool has_minute = __get_int_prop(properties, "minute", &minute);
 
-        if (has_hour != has_minute) {
-            ai_mcp_return_value_set_str(ret_val,
-                "Error: 'at' schedule requires hour and minute together. "
-                "'minute' is an absolute clock minute (0-59), not a relative offset. "
-                "For reminders like 'in 5 minutes', pass at_epoch or provide the full target hour/minute.");
-            return OPRT_INVALID_PARM;
-        }
-
-        if (has_hour && has_minute) {
+        if (has_hour || has_minute) {
             /* Datetime mode: device computes epoch from local time fields */
-            __get_int_prop(properties, "hour",   &hour);
-            __get_int_prop(properties, "minute", &minute);
             __get_int_prop(properties, "year",   &year);
             __get_int_prop(properties, "month",  &month);
             __get_int_prop(properties, "day",    &day);
@@ -383,20 +364,15 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
             job.at_epoch = epoch;
             PR_DEBUG("cron_add: datetime %04d-%02d-%02d %02d:%02d:%02d -> epoch=%lld",
                      year, month, day, hour, minute, second, (long long)epoch);
-        } else if (has_at_epoch) {
+        } else {
             /* Fallback: use at_epoch directly */
             int at_epoch = 0;
-            __get_int_prop(properties, "at_epoch", &at_epoch);
-            if (at_epoch <= 0) {
+            if (!__get_int_prop(properties, "at_epoch", &at_epoch) || at_epoch <= 0) {
                 ai_mcp_return_value_set_str(ret_val,
                     "Error: 'at' schedule requires hour/minute or at_epoch");
                 return OPRT_INVALID_PARM;
             }
             job.at_epoch = (int64_t)at_epoch;
-        } else {
-            ai_mcp_return_value_set_str(ret_val,
-                "Error: 'at' schedule requires hour+minute or at_epoch");
-            return OPRT_INVALID_PARM;
         }
 
         int64_t now = (int64_t)tal_time_get_posix();
@@ -649,12 +625,12 @@ OPERATE_RET tool_cron_register(void)
         "- hour (int): Hour 0-23.\n"
         "- minute (int): Minute 0-59.\n"
         "- year/month/day/second (int): Optional. If omitted, today's date and 0 seconds are used.\n"
-        "- at_epoch (int): Alternative — pass a UTC epoch directly (preferred for relative delays like 'in 5 minutes').\n"
+        "- at_epoch (int): Alternative — pass a UTC epoch directly (used only if hour/minute are absent).\n"
         "- delete_after_run (bool): Whether to auto-delete after firing (default true for 'at').\n"
         "For 'at' type, specify the ABSOLUTE target clock time (not a relative offset):\n"
         "- To schedule 10 minutes from now (e.g. current time 17:44): pass hour=17, minute=54.\n"
-        "- DO NOT pass only minute=10 as a relative offset — minute means clock minute 0-59, and hour/minute must be provided together.\n"
-        "- For relative reminders, prefer time_to_epoch -> cron_add(at_epoch=...).\n"
+        "- DO NOT pass minute=10 as a relative offset — minute means clock minute 0-59.\n"
+        "- Alternatively, pass at_epoch = current_epoch + delay_seconds.\n"
         "Response:\n"
         "- Returns job ID and schedule details on success, including 'Verified in stored list'.\n"
         "- If the response does NOT contain 'Verified in stored list', the file write failed;\n"

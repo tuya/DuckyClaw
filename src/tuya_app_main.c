@@ -199,13 +199,14 @@ void user_event_handler_on(tuya_iot_client_t *client, tuya_event_msg_t *event)
         PR_INFO("Device MQTT Connected!");
         NW_IP_S ip;
         memset(&ip, 0, sizeof(ip));
-    
+#if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
         OPERATE_RET op_ret = tal_wifi_get_ip(WF_STATION, &ip);
-        // PR_INFO("acp client init ip=%s", ip.ip);
+        // PR_INFO("device init ip=%s", ip.ip);
         if (OPRT_OK != op_ret) {
             PR_ERR("get ip fail:%d", op_ret);
             op_ret = OPRT_NOT_FOUND;
         }
+#endif
         tal_event_publish(EVENT_MQTT_CONNECTED, NULL);
 
         static uint8_t first = 1;

@@ -176,14 +176,14 @@ static void __ai_chat_handle_event(AI_NOTIFY_EVENT_T *event)
     switch (event->type) {
     case AI_USER_EVT_ASR_OK: {
         /* Restore TTS and UI output for this iteration. */
-        ai_agent_set_tts_suppressed(FALSE);
-        ai_chat_ui_set_output_suppressed(FALSE);
 #if 0
+        // ai_agent_set_tts_suppressed(FALSE);
+        // ai_chat_ui_set_output_suppressed(FALSE);
         AI_NOTIFY_TEXT_T *asr = (AI_NOTIFY_TEXT_T *)event->data;
         if (!asr || asr->datalen == 0 || !asr->data) {
             break;
         }
-        char *asr_text = (CHAR_T *)tal_malloc(asr->datalen + 1);
+        char *asr_text = (char *)tal_malloc(asr->datalen + 1);
         if (asr_text) {
             memcpy(asr_text, asr->data, asr->datalen);
             asr_text[asr->datalen] = '\0';

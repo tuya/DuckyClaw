@@ -101,7 +101,7 @@ OPERATE_RET acp_client_stop(void);
  * @return TRUE  if the ACP session is established.
  * @return FALSE if disconnected or still connecting.
  */
-BOOL_T acp_client_is_connected(void);
+bool acp_client_is_connected(void);
 
 #ifdef __cplusplus
 }
