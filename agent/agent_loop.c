@@ -401,6 +401,7 @@ static void agent_loop_task(void *arg)
         }
         if (!in.content || !s_total_prompt) {
             claw_free(in.content);
+            claw_free(in.mentions_json);
             continue;
         }
 
