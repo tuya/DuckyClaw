@@ -24,6 +24,9 @@
 #include "tool_exec.h"
 #endif
 
+#if defined(ENABLE_HARDWARE_MCP) && (ENABLE_HARDWARE_MCP == 1)
+#include "tool_hw.h"
+#endif
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
@@ -70,6 +73,11 @@ static OPERATE_RET __ai_mcp_init(void *data)
 
     /* Register OpenClaw/PC control tool */
     TUYA_CALL_ERR_RETURN(tool_openclaw_ctrl_register());
+
+    /* Register hardware peripheral tools */
+    #if defined(ENABLE_HARDWARE_MCP) && (ENABLE_HARDWARE_MCP == 1)
+    TUYA_CALL_ERR_RETURN(tool_hw_register());
+    #endif
 
     PR_DEBUG("MCP Server initialized successfully with tools");
     return rt;

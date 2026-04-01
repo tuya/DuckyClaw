@@ -561,10 +561,7 @@ int agent_loop_start_cb(void *data)
     return 0;
 }
 
-/**
- * agent_loop_init - Initialise the agent loop and start its thread.
- */
-OPERATE_RET agent_loop_init(void)
+OPERATE_RET agent_loop_init_evt_cb(void *data)
 {
     OPERATE_RET rt = OPRT_OK;
 
@@ -623,4 +620,13 @@ OPERATE_RET agent_loop_init(void)
     // tal_event_subscribe(EVENT_AI_CLIENT_RUN, "agent_loop", agent_loop_start_cb, SUBSCRIBE_TYPE_NORMAL);
 
     return OPRT_OK;
+}
+
+/**
+ * agent_loop_init - Initialise the agent loop and start its thread.
+ */
+OPERATE_RET agent_loop_init(void)
+{
+    PR_DEBUG("Agent loop init");
+    return tal_event_subscribe(EVENT_MQTT_CONNECTED, "agent_loop_init", agent_loop_init_evt_cb, SUBSCRIBE_TYPE_NORMAL);
 }

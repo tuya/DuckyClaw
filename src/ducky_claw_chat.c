@@ -5,7 +5,7 @@
  */
 
 #include "tal_api.h"
-
+#include "tal_thread.h"
 #include "netmgr.h"
 
 #include "ai_agent.h"
@@ -50,6 +50,8 @@ static TIMER_ID            sg_disp_status_tm;
 
 static void __printf_free_heap_tm_cb(TIMER_ID timer_id, void *arg)
 {
+    // extern void tal_thread_dump_watermark(void);
+    // tal_thread_dump_watermark();
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
     uint32_t free_heap       = tal_system_get_free_heap_size();
     uint32_t free_psram_heap = tal_psram_get_free_heap_size();

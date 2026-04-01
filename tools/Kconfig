@@ -6,4 +6,11 @@ menu "Tools (Filesystem) Config"
             When enabled (y), use SD card filesystem (tkl_fs, root /sdcard).
             When disabled (n), use internal flash (tal_fs).
             Typically disable on Linux (PLATFORM_LINUX) targets.
+
+    config ENABLE_HARDWARE_MCP
+        bool "Enable hardware MCP"
+        default n
+        help
+            When enabled (y), enable hardware MCP tools.
+            When disabled (n), disable hardware MCP tools.
 endmenu
