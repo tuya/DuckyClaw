@@ -33,6 +33,12 @@
 #ifndef IM_SECRET_FS_ALLOW_FROM
 #define IM_SECRET_FS_ALLOW_FROM    ""
 #endif
+#ifndef IM_SECRET_WX_TOKEN
+#define IM_SECRET_WX_TOKEN         ""
+#endif
+#ifndef IM_SECRET_WX_ALLOW_FROM
+#define IM_SECRET_WX_ALLOW_FROM    ""
+#endif
 #ifndef IM_SECRET_CHANNEL_MODE
 #define IM_SECRET_CHANNEL_MODE     "telegram"
 #endif
@@ -103,6 +109,7 @@
 #define IM_NVS_TG                  "tg_config"
 #define IM_NVS_DC                  "dc_config"
 #define IM_NVS_FS                  "fs_config"
+#define IM_NVS_WX                  "wx_config"
 #define IM_NVS_BOT                 "bot_config"
 #define IM_NVS_PROXY               "proxy_config"
 
@@ -113,6 +120,11 @@
 #define IM_NVS_KEY_FS_APP_ID       "app_id"
 #define IM_NVS_KEY_FS_APP_SECRET   "app_secret"
 #define IM_NVS_KEY_FS_ALLOW_FROM   "allow_from"
+#define IM_NVS_KEY_WX_TOKEN        "bot_token"
+#define IM_NVS_KEY_WX_HOST         "base_host"
+#define IM_NVS_KEY_WX_ALLOW        "allow_from"
+#define IM_NVS_KEY_WX_UPD_BUF      "upd_buf"
+#define IM_NVS_KEY_WX_CTX_TOK      "ctx_tok"
 #define IM_NVS_KEY_CHANNEL_MODE    "channel_mode"
 #define IM_NVS_KEY_PROXY_HOST      "host"
 #define IM_NVS_KEY_PROXY_PORT      "port"

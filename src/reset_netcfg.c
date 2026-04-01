@@ -12,6 +12,8 @@
  * @copyright Copyright (c) 2021-2025 Tuya Inc. All Rights Reserved.
  */
 
+#include "im_config.h"
+#include "im_platform.h"
 #include "tal_api.h"
 #include "tuya_iot.h"
 
@@ -76,6 +78,32 @@ static OPERATE_RET __reset_netconfig_clear(void *data)
     return OPRT_OK;
 }
 
+/**
+ * @brief Clear all Weixin (WeChat iLink) KV entries from persistent storage.
+ *
+ * Called when the user presses the button RESET_NETCNT_MAX times in quick
+ * succession.  Removes bot_token, base_host, allow_from, get_updates_buf and
+ * context_token so that the next boot triggers a fresh QR login.
+ *
+ * @return none
+ */
+static void weixin_kv_clear(void)
+{
+    static const char *const wx_keys[] = {
+        IM_NVS_KEY_WX_TOKEN,
+        IM_NVS_KEY_WX_HOST,
+        IM_NVS_KEY_WX_ALLOW,
+        IM_NVS_KEY_WX_UPD_BUF,
+        IM_NVS_KEY_WX_CTX_TOK,
+    };
+
+    for (size_t i = 0; i < sizeof(wx_keys) / sizeof(wx_keys[0]); i++) {
+        im_kv_del(IM_NVS_WX, wx_keys[i]);
+    }
+
+    PR_INFO("Weixin KV data cleared (token / allow_from / upd_buf / ctx_tok)");
+}
+
 int reset_netconfig_check(void)
 {
     int rt;
@@ -89,6 +117,7 @@ int reset_netconfig_check(void)
     tal_event_subscribe(EVENT_RESET, "reset_netconfig", __reset_netconfig_clear, SUBSCRIBE_TYPE_NORMAL);
 
     PR_DEBUG("Reset ctrl data!");
+    weixin_kv_clear();
     tuya_iot_reset(tuya_iot_client_get());
 
     return rt;

@@ -13,6 +13,7 @@ set(IM_SRCS
     ${IM_PATH}/channels/telegram_bot.c
     ${IM_PATH}/channels/discord_bot.c
     ${IM_PATH}/channels/feishu_bot.c
+    ${IM_PATH}/channels/weixin_bot.c
     ${IM_PATH}/proxy/http_proxy.c
     ${IM_PATH}/certs/tls_cert_bundle.c
     ${IM_PATH}/certs/ca_bundle_mini.c

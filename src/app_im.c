@@ -60,6 +60,9 @@ static const char *__app_im_map_channel(const char *channel)
     if (strcmp(channel, IM_CHAN_FEISHU) == 0) {
         return IM_CHAN_FEISHU;
     }
+    if (strcmp(channel, IM_CHAN_WEIXIN) == 0) {
+        return IM_CHAN_WEIXIN;
+    }
     if (strcmp(channel, IM_CHAN_WS) == 0) {
         return IM_CHAN_WS;
     }
@@ -125,6 +128,8 @@ static void outbound_dispatch_task(void *arg)
             (void)feishu_send_message(msg.chat_id,
                                       msg.content ? msg.content : "",
                                       msg.mentions_json);
+        } else if (strcmp(msg.channel, IM_CHAN_WEIXIN) == 0) {
+            (void)weixin_send_message(msg.chat_id, msg.content ? msg.content : "");
         } else if (strcmp(msg.channel, IM_CHAN_WS) == 0) {
             if (!__app_im_ws_token_valid()) {
                 PR_WARN("ws outbound dropped: CLAW_WS_AUTH_TOKEN is empty");
@@ -210,6 +215,12 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
             rt = feishu_bot_start();
         }
         s_channel = IM_CHAN_FEISHU;
+    } else if (strcmp(mode, IM_CHAN_WEIXIN) == 0) {
+        rt = weixin_bot_init();
+        if (rt == OPRT_OK) {
+            rt = weixin_bot_start();
+        }
+        s_channel = IM_CHAN_WEIXIN;
     } else {
         PR_WARN("unknown channel_mode '%s', fallback to %s", mode, IM_SECRET_CHANNEL_MODE);
         rt = telegram_bot_init();

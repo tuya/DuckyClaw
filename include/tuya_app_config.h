@@ -32,9 +32,9 @@ extern "C" {
 #endif
 
 // IM configuration
-// feishu | telegram | discord
+// feishu | telegram | discord | weixin
 #ifndef IM_SECRET_CHANNEL_MODE
-#define IM_SECRET_CHANNEL_MODE      "feishu"
+#define IM_SECRET_CHANNEL_MODE      "weixin"
 #endif
 
 #ifndef IM_SECRET_FS_APP_ID

@@ -6,6 +6,7 @@
 #define IM_CHAN_TELEGRAM  "telegram"
 #define IM_CHAN_DISCORD   "discord"
 #define IM_CHAN_FEISHU    "feishu"
+#define IM_CHAN_WEIXIN    "weixin"
 #define IM_CHAN_WS        "ws"
 #define IM_CHAN_ACP       "acp"
 
