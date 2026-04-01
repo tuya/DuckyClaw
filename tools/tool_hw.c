@@ -739,7 +739,7 @@ static OPERATE_RET __tool_pwm_set(const MCP_PROPERTY_LIST_T *properties,
     }
 
     PR_NOTICE("pwm_duty_set pin %d duty %d", pin, duty);
-    tkl_pwm_duty_set((TUYA_PWM_NUM_E)entry->pwm_port, duty);
+    rt = tkl_pwm_duty_set((TUYA_PWM_NUM_E)entry->pwm_port, duty);
     if (rt != OPRT_OK) {
         char buf[HW_RESULT_BUF];
         snprintf(buf, sizeof(buf),
@@ -839,7 +839,7 @@ static OPERATE_RET __tool_servo_set(const MCP_PROPERTY_LIST_T *properties,
     }
 
     PR_NOTICE("pwm_duty_set pin %d duty %d", pin, duty);
-    tkl_pwm_duty_set((TUYA_PWM_NUM_E)entry->pwm_port, duty);
+    rt = tkl_pwm_duty_set((TUYA_PWM_NUM_E)entry->pwm_port, duty);
     if (rt != OPRT_OK) {
         char buf[HW_RESULT_BUF];
         snprintf(buf, sizeof(buf),
@@ -903,7 +903,7 @@ OPERATE_RET tool_hw_register(void)
             "i2c_scan",
             "Scan an I2C bus using the specified T5 SCL/SDA pin pair and return "
             "found 7-bit device addresses. "
-            "Valid T5 pairs (SCL,SDA): (P20,P21),(P0,P1),(P14,P15),(P38,P39),(P42,P43).",
+            "Valid T5 pairs (SCL,SDA): (P20,P21),(P6,P7),(P14,P15),(P38,P39),(P42,P43).",
             __tool_i2c_scan, NULL,
             MCP_PROP_INT_RANGE("scl_pin", "SCL board pin number", 0, 55),
             MCP_PROP_INT_RANGE("sda_pin", "SDA board pin number", 0, 55)
