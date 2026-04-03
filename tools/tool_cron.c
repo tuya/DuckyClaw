@@ -551,7 +551,7 @@ OPERATE_RET tool_cron_register(void)
         "- name (string): Descriptive name for the job.\n"
         "- schedule_type (string): 'every' for recurring or 'at' for one-shot.\n"
         "- message (string): Message content to send when the job fires.\n"
-        "The message content is a reminder to the user to complete the task of naming, using a reminder tone."
+        "  Write it as a friendly reminder that prompts the user about the scheduled task.\n"
         "- interval_s (int): Interval in seconds (required for 'every' type).\n"
         "For 'at' type, use this workflow:\n"
         "  1. If the request is relative (e.g. 'in 5 minutes'), call get_current_time first.\n"

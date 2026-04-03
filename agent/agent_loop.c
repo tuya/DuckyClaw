@@ -605,8 +605,6 @@ OPERATE_RET agent_loop_init_evt_cb(void *data)
     ai_mcp_server_set_tool_exec_hook(__on_tool_executed, NULL);
 
     PR_DEBUG("Agent loop initialized");
-    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
-    PR_INFO("Agent loop stack size %d", DUCKY_CLAW_AGENT_STACK);
 
     THREAD_CFG_T thrd_param = {0};
     thrd_param.stackDepth = DUCKY_CLAW_AGENT_STACK;
