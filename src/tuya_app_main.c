@@ -41,6 +41,11 @@
 
 #include "board_com_api.h"
 
+#if defined(ENABLE_BLUETOOTH) && (ENABLE_BLUETOOTH == 1)
+#include "netcfg.h"
+#include "ble_mgr.h"
+#endif
+
 #include "ducky_claw_chat.h"
 #include "reset_netcfg.h"
 #include "app_im.h"
@@ -196,6 +201,15 @@ void user_event_handler_on(tuya_iot_client_t *client, tuya_event_msg_t *event)
 
     /* MQTT with tuya cloud is connected, device online */
     case TUYA_EVENT_MQTT_CONNECTED:
+#if defined(PLATFORM_ESP32) && (PLATFORM_ESP32 == 1)
+        /* NOTE: this is for ESP32 only */
+        uint32_t free_heap = tal_system_get_free_heap_size();
+        PR_INFO("BLE init Free heap size:%d", free_heap);
+        netcfg_stop(NETCFG_TUYA_BLE);
+        tuya_ble_deinit();
+        free_heap = tal_system_get_free_heap_size();
+        PR_INFO("BLE deinit Free heap size:%d", free_heap);
+#endif
         PR_INFO("Device MQTT Connected!");
         NW_IP_S ip;
         memset(&ip, 0, sizeof(ip));
@@ -327,9 +341,11 @@ void user_main(void)
     tal_sw_timer_init();
     tal_workq_init();
     tal_time_service_init();
+#if !defined(PLATFORM_ESP32)
     tal_cli_init();
     tuya_app_cli_init();
     serial_cli_init();
+#endif
     tuya_authorize_init();
 
     reset_netconfig_start();

@@ -605,6 +605,8 @@ OPERATE_RET agent_loop_init_evt_cb(void *data)
     ai_mcp_server_set_tool_exec_hook(__on_tool_executed, NULL);
 
     PR_DEBUG("Agent loop initialized");
+    PR_INFO("Device Free heap %d", tal_system_get_free_heap_size());
+    PR_INFO("Agent loop stack size %d", DUCKY_CLAW_AGENT_STACK);
 
     THREAD_CFG_T thrd_param = {0};
     thrd_param.stackDepth = DUCKY_CLAW_AGENT_STACK;
@@ -628,5 +630,5 @@ OPERATE_RET agent_loop_init_evt_cb(void *data)
 OPERATE_RET agent_loop_init(void)
 {
     PR_DEBUG("Agent loop init");
-    return tal_event_subscribe(EVENT_MQTT_CONNECTED, "agent_loop_init", agent_loop_init_evt_cb, SUBSCRIBE_TYPE_NORMAL);
+    return tal_event_subscribe(EVENT_MQTT_CONNECTED, "agent_loop_init", agent_loop_init_evt_cb, SUBSCRIBE_TYPE_EMERGENCY);
 }
