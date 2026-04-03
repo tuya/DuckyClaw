@@ -43,7 +43,7 @@ static OPERATE_RET __ai_mcp_init(void *data)
     #endif
 
     /* Initialize filesystem (mount SD card if needed, create default files) */
-    TUYA_CALL_ERR_RETURN(tool_files_fs_init());
+    TUYA_CALL_ERR_LOG(tool_files_fs_init());
 
     /* Initialize and start cron service */
     TUYA_CALL_ERR_LOG(cron_service_init());
@@ -61,22 +61,22 @@ static OPERATE_RET __ai_mcp_init(void *data)
     TUYA_CALL_ERR_LOG(skill_loader_init());
 
     /* Register file operation tools */
-    TUYA_CALL_ERR_RETURN(tool_files_register());
+    TUYA_CALL_ERR_LOG(tool_files_register());
 
     /* Register cron tools */
-    TUYA_CALL_ERR_RETURN(tool_cron_register());
+    TUYA_CALL_ERR_LOG(tool_cron_register());
 
     /* Register exec/system tools */
     #if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
-    TUYA_CALL_ERR_RETURN(tool_exec_register());
+    TUYA_CALL_ERR_LOG(tool_exec_register());
     #endif
 
     /* Register OpenClaw/PC control tool */
-    TUYA_CALL_ERR_RETURN(tool_openclaw_ctrl_register());
+    TUYA_CALL_ERR_LOG(tool_openclaw_ctrl_register());
 
     /* Register hardware peripheral tools */
     #if defined(ENABLE_HARDWARE_MCP) && (ENABLE_HARDWARE_MCP == 1)
-    TUYA_CALL_ERR_RETURN(tool_hw_register());
+    TUYA_CALL_ERR_LOG(tool_hw_register());
     #endif
 
     PR_DEBUG("MCP Server initialized successfully with tools");

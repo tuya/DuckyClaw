@@ -329,8 +329,8 @@ static void cron_process_due_jobs(void)
             if (is_overdue) {
                 PR_WARN("Cron overdue: '%s' (%s) missed by %llds", job->name, job->id,
                         (long long)late_secs);
-                char msg[512];
-                snprintf(msg, sizeof(msg),
+                char *msg = (char *)claw_malloc(512);
+                snprintf(msg, 512,
                          "[Task Overdue] Task '%s' (id=%s) was scheduled at epoch %lld "
                          "but missed its trigger window by %llds. "
                          "Please inform the user that this reminder was not delivered on time, "
@@ -338,11 +338,11 @@ static void cron_process_due_jobs(void)
                          "To delete, call cron_remove with job_id='%s'.",
                          job->name, job->id, (long long)job->at_epoch,
                          (long long)late_secs, job->id);
+                PR_INFO("Cron overdue msg: %s", msg);
                 im_msg_t im = {0};
                 strncpy(im.channel, "cron", sizeof(im.channel) - 1);
-                im.content = claw_malloc(strlen(msg) + 1);
+                im.content = msg;
                 if (im.content) {
-                    strncpy(im.content, msg, strlen(msg) + 1);
                     (void)message_bus_push_inbound(&im);
                 } else {
                     PR_ERR("cron: malloc failed for overdue msg");
@@ -350,6 +350,7 @@ static void cron_process_due_jobs(void)
                 /* Disable so it is not reported again on the next check */
                 job->enabled = false;
                 changed = true;
+                claw_free(msg);
                 continue;
             }
         }
