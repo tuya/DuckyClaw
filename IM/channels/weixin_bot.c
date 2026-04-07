@@ -708,16 +708,34 @@ static void weixin_qr_login_task(void *arg)
         while ((uint32_t)(tal_system_get_millisecond() - login_deadline + IM_WX_LOGIN_TIMEOUT_MS)
                < IM_WX_LOGIN_TIMEOUT_MS) {
 
-            char qrcode_enc[768] = {0};
-            url_encode(qrcode, qrcode_enc, sizeof(qrcode_enc));
-            char path[320] = {0};
-            snprintf(path, sizeof(path), "/ilink/bot/get_qrcode_status?qrcode=%s", qrcode_enc);
+            /* Encoded qrcode can be up to 3× the raw length; allocate path on heap */
+            size_t qrcode_enc_size = strlen(qrcode) * 3 + 1;
+            char *qrcode_enc = im_malloc(qrcode_enc_size);
+            if (!qrcode_enc) {
+                IM_LOGE(TAG, "get_qrcode_status: alloc enc buf failed");
+                tal_system_sleep(2000);
+                continue;
+            }
+            url_encode(qrcode, qrcode_enc, qrcode_enc_size);
+
+            /* "/ilink/bot/get_qrcode_status?qrcode=" = 37 chars */
+            size_t path_size = 37 + qrcode_enc_size + 1;
+            char *path = im_malloc(path_size);
+            if (!path) {
+                IM_LOGE(TAG, "get_qrcode_status: alloc path buf failed");
+                im_free(qrcode_enc);
+                tal_system_sleep(2000);
+                continue;
+            }
+            snprintf(path, path_size, "/ilink/bot/get_qrcode_status?qrcode=%s", qrcode_enc);
+            im_free(qrcode_enc);
 
             uint16_t status = 0;
             OPERATE_RET rt = weixin_api_get(path,
                                             "iLink-App-ClientVersion", "1",
                                             resp, WX_SMALL_BUF_SIZE,
                                             &status, WX_QR_POLL_TIMEOUT_MS);
+            im_free(path);
 
             if (rt != OPRT_OK || status != 200) {
                 IM_LOGW(TAG, "get_qrcode_status failed rt=%d http=%u, retry", rt, status);
