@@ -221,7 +221,6 @@ void user_event_handler_on(tuya_iot_client_t *client, tuya_event_msg_t *event)
             op_ret = OPRT_NOT_FOUND;
         }
 #endif
-        tal_event_publish(EVENT_MQTT_CONNECTED, NULL);
 
         static uint8_t first = 1;
         if (first) {
