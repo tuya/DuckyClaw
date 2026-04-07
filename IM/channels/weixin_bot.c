@@ -56,6 +56,7 @@ static THREAD_HANDLE s_qr_thread             = NULL;
 static uint8_t      *s_wx_cacert             = NULL;
 static size_t        s_wx_cacert_len         = 0;
 static bool          s_wx_tls_no_verify      = false;
+static char          s_wx_cert_host[128]     = {0};
 
 static bool          s_session_paused        = false;
 static uint32_t      s_session_pause_start   = 0;
@@ -68,7 +69,7 @@ static uint32_t      s_fail_delay_ms         = IM_WX_FAIL_BASE_MS;
 
 static void weixin_poll_task(void *arg);
 static void weixin_qr_login_task(void *arg);
-
+static const char *effective_host(void);
 /* ---------------------------------------------------------------------------
  * Utility helpers
  * --------------------------------------------------------------------------- */
@@ -86,7 +87,7 @@ static void weixin_make_uin(char *out, size_t out_size)
     size_t   dec_len;
     size_t   b64_len = 0;
 
-    snprintf(dec, sizeof(dec), "%u", val);
+    snprintf(dec, sizeof(dec), "%lu", val);
     dec_len = strlen(dec);
     mbedtls_base64_encode((uint8_t *)out, out_size, &b64_len,
                           (const uint8_t *)dec, dec_len);
@@ -98,16 +99,32 @@ static void weixin_make_uin(char *out, size_t out_size)
 }
 
 /**
- * @brief Ensure TLS certificate for the Weixin API host is loaded.
+ * @brief Ensure TLS certificate for the current effective API host is loaded.
+ *
+ * Invalidates the cached certificate when effective_host() differs from the
+ * host the certificate was originally loaded for, so that a server-provided
+ * custom host always gets its own certificate lookup.
+ *
  * @return OPRT_OK always (falls back to no-verify on failure)
  */
 static OPERATE_RET ensure_wx_cert(void)
 {
-    if (s_wx_cacert && s_wx_cacert_len > 0) {
+    const char *host = effective_host();
+
+    /* Cache hit: cert already loaded for the current host */
+    if (s_wx_cacert && s_wx_cacert_len > 0 && strcmp(s_wx_cert_host, host) == 0) {
         return OPRT_OK;
     }
 
-    OPERATE_RET rt = im_tls_query_domain_certs(WX_API_HOST, &s_wx_cacert, &s_wx_cacert_len);
+    /* Release stale cert when the host has changed */
+    if (s_wx_cacert) {
+        im_free(s_wx_cacert);
+        s_wx_cacert     = NULL;
+        s_wx_cacert_len = 0;
+    }
+    s_wx_cert_host[0] = '\0';
+
+    OPERATE_RET rt = im_tls_query_domain_certs(host, &s_wx_cacert, &s_wx_cacert_len);
     if (rt != OPRT_OK || !s_wx_cacert || s_wx_cacert_len == 0) {
         if (s_wx_cacert) {
             im_free(s_wx_cacert);
@@ -115,12 +132,60 @@ static OPERATE_RET ensure_wx_cert(void)
         s_wx_cacert        = NULL;
         s_wx_cacert_len    = 0;
         s_wx_tls_no_verify = true;
-        IM_LOGD(TAG, "cert unavailable for %s, TLS no-verify mode", WX_API_HOST);
+        IM_LOGD(TAG, "cert unavailable for %s, TLS no-verify mode", host);
         return OPRT_OK;
     }
 
+    im_safe_copy(s_wx_cert_host, sizeof(s_wx_cert_host), host);
     s_wx_tls_no_verify = false;
     return OPRT_OK;
+}
+
+/**
+ * @brief Percent-encode a string for safe inclusion in a URL query parameter.
+ *
+ * Only unreserved characters (RFC 3986) are left as-is; all others are
+ * encoded as %XX.  The output is always null-terminated.
+ *
+ * @param[in]  src       source string to encode
+ * @param[out] dst       output buffer
+ * @param[in]  dst_size  size of dst (including space for '\0')
+ * @return number of bytes written (excluding null terminator)
+ */
+static size_t url_encode(const char *src, char *dst, size_t dst_size)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t written = 0;
+
+    if (!src || !dst || dst_size == 0) {
+        if (dst && dst_size > 0) {
+            dst[0] = '\0';
+        }
+        return 0;
+    }
+
+    for (const char *p = src; *p != '\0'; p++) {
+        unsigned char c = (unsigned char)*p;
+        bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                          (c >= '0' && c <= '9') ||
+                          c == '-' || c == '_' || c == '.' || c == '~';
+
+        if (unreserved) {
+            if (written + 2 > dst_size) {
+                break;
+            }
+            dst[written++] = (char)c;
+        } else {
+            if (written + 4 > dst_size) {
+                break;
+            }
+            dst[written++] = '%';
+            dst[written++] = hex[(c >> 4) & 0x0F];
+            dst[written++] = hex[c & 0x0F];
+        }
+    }
+    dst[written] = '\0';
+    return written;
 }
 
 /**
@@ -426,9 +491,13 @@ static void process_updates(const char *resp_str)
 
         const char *from_user = from_node->valuestring;
 
-        /* allowFrom authorization: drop messages from unknown users */
-        if (s_allow_from[0] != '\0' && strcmp(s_allow_from, from_user) != 0) {
-            IM_LOGD(TAG, "drop msg from unauthorised user=%s", from_user);
+        /* allowFrom authorization: fail-closed — reject all messages when no
+         * allow_from is configured, and reject messages from non-matching users
+         * when one is configured.  This prevents a token-only provisioned device
+         * from accepting commands from arbitrary senders. */
+        if (s_allow_from[0] == '\0' || strcmp(s_allow_from, from_user) != 0) {
+            IM_LOGD(TAG, "drop msg from unauthorised user=%s (allow_from=%s)",
+                    from_user, s_allow_from[0] ? s_allow_from : "<unset>");
             continue;
         }
 
@@ -639,8 +708,10 @@ static void weixin_qr_login_task(void *arg)
         while ((uint32_t)(tal_system_get_millisecond() - login_deadline + IM_WX_LOGIN_TIMEOUT_MS)
                < IM_WX_LOGIN_TIMEOUT_MS) {
 
+            char qrcode_enc[768] = {0};
+            url_encode(qrcode, qrcode_enc, sizeof(qrcode_enc));
             char path[320] = {0};
-            snprintf(path, sizeof(path), "/ilink/bot/get_qrcode_status?qrcode=%s", qrcode);
+            snprintf(path, sizeof(path), "/ilink/bot/get_qrcode_status?qrcode=%s", qrcode_enc);
 
             uint16_t status = 0;
             OPERATE_RET rt = weixin_api_get(path,
@@ -905,9 +976,9 @@ OPERATE_RET weixin_send_message(const char *user_id, const char *text)
 
     /* Generate client_id */
     char client_id[64] = {0};
-    snprintf(client_id, sizeof(client_id), "wx-%08" PRIx32 "-%04x",
-             tal_system_get_millisecond(),
-             (unsigned)(tal_system_get_millisecond() & 0xFFFF));
+    snprintf(client_id, sizeof(client_id), "wx-%016llx-%04x",
+         tal_system_get_millisecond(),
+         (unsigned int)(rand() % 0xFFFF));
 
     /* Build item_list */
     cJSON *root    = cJSON_CreateObject();
