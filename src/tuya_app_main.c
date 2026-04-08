@@ -20,6 +20,7 @@
 #include "cJSON.h"
 #include "tal_api.h"
 #include "tuya_app_config.h"
+#include "app_config_kv.h"
 #include "tuya_iot.h"
 #include "tuya_iot_dp.h"
 #include "netmgr.h"
@@ -191,7 +192,7 @@ void user_event_handler_on(tuya_iot_client_t *client, tuya_event_msg_t *event)
     case TUYA_EVENT_DIRECT_MQTT_CONNECTED: {
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
         char buffer[255];
-        sprintf(buffer, "https://smartapp.tuya.com/s/p?p=%s&uuid=%s&v=2.0", TUYA_PRODUCT_ID, license.uuid);
+        sprintf(buffer, "https://smartapp.tuya.com/s/p?p=%s&uuid=%s&v=2.0", kv_product_id, license.uuid);
         qrcode_string_output(buffer, user_log_output_cb, 0);
 #endif
     } break;
@@ -350,16 +351,24 @@ void user_main(void)
     reset_netconfig_start();
 
     if (OPRT_OK != tuya_authorize_read(&license)) {
-        license.uuid = TUYA_OPENSDK_UUID;
-        license.authkey = TUYA_OPENSDK_AUTHKEY;
+        static char kv_uuid[64]    = {0};
+        static char kv_authkey[64] = {0};
+        app_cfg_get_uuid(kv_uuid, sizeof(kv_uuid));
+        app_cfg_get_authkey(kv_authkey, sizeof(kv_authkey));
+        license.uuid    = kv_uuid;
+        license.authkey = kv_authkey;
         PR_WARN("Replace the TUYA_OPENSDK_UUID and TUYA_OPENSDK_AUTHKEY contents, otherwise the demo cannot work.\n \
                 Visit https://platform.tuya.com/purchase/index?type=6 to get the open-sdk uuid and authkey.");
     }
 
+    /* Read product_id from KV (fallback to compile-time macro) */
+    static char kv_product_id[32] = {0};
+    app_cfg_get_product_id(kv_product_id, sizeof(kv_product_id));
+
     /* Initialize Tuya device configuration */
     ret = tuya_iot_init(&ai_client, &(const tuya_iot_config_t){
                                         .software_ver = PROJECT_VERSION,
-                                        .productkey = TUYA_PRODUCT_ID,
+                                        .productkey = kv_product_id,
                                         .uuid = license.uuid,
                                         .authkey = license.authkey,
                                         // .firmware_key      = TUYA_DEVICE_FIRMWAREKEY,
