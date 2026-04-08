@@ -31,6 +31,7 @@
 #include "acp_client.h"
 #include "tool_files.h"
 #include "tuya_app_config.h"
+#include "app_config_kv.h"
 #include "app_im.h"
 #include "bus/message_bus.h"
 
@@ -126,6 +127,20 @@ typedef struct {
  * --------------------------------------------------------------------------- */
 
 static acp_ctx_t s_ctx;
+
+/* KV-backed config (loaded once at init, used throughout) */
+static char s_gw_host[64]    = {0};
+static char s_gw_token[128]  = {0};
+static char s_device_id[64]  = {0};
+static unsigned s_gw_port    = 0;
+
+static void acp_load_config(void)
+{
+    app_cfg_get_gw_host(s_gw_host, sizeof(s_gw_host));
+    s_gw_port = app_cfg_get_gw_port_num();
+    app_cfg_get_gw_token(s_gw_token, sizeof(s_gw_token));
+    app_cfg_get_device_id(s_device_id, sizeof(s_device_id));
+}
 
 /* ---------------------------------------------------------------------------
  * Forward declarations
@@ -494,10 +509,10 @@ static OPERATE_RET __acp_connect(int fd, char *session_key, size_t sk_size)
     cJSON_AddStringToObject(client, "version",      "1.0.0");
     cJSON_AddStringToObject(client, "platform",     "embedded");
     cJSON_AddStringToObject(client, "deviceFamily", "DuckyClaw");
-    cJSON_AddStringToObject(client, "displayName",  DUCKYCLAW_DEVICE_ID);
+    cJSON_AddStringToObject(client, "displayName",  s_device_id);
     cJSON_AddItemToObject(params, "client", client);
 
-    cJSON_AddStringToObject(auth, "token", OPENCLAW_GATEWAY_TOKEN);
+    cJSON_AddStringToObject(auth, "token", s_gw_token);
     cJSON_AddItemToObject(params, "auth", auth);
 
     cJSON_AddStringToObject(params, "role", "operator");
@@ -1308,11 +1323,11 @@ static OPERATE_RET __connect_and_handshake(void)
     TUYA_IP_ADDR_T ip_addr = 0;
 
     /* Resolve host – try str2addr first (works for dotted-decimal IPs) */
-    ip_addr = tal_net_str2addr(OPENCLAW_GATEWAY_HOST);
+    ip_addr = tal_net_str2addr(s_gw_host);
     if (ip_addr == 0) {
-        OPERATE_RET rt = tal_net_gethostbyname(OPENCLAW_GATEWAY_HOST, &ip_addr);
+        OPERATE_RET rt = tal_net_gethostbyname(s_gw_host, &ip_addr);
         if (rt != OPRT_OK || ip_addr == 0) {
-            PR_ERR("acp dns resolve failed host=%s", OPENCLAW_GATEWAY_HOST);
+            PR_ERR("acp dns resolve failed host=%s", s_gw_host);
             return OPRT_NETWORK_ERROR;
         }
     }
@@ -1323,17 +1338,17 @@ static OPERATE_RET __connect_and_handshake(void)
         return OPRT_NETWORK_ERROR;
     }
 
-    OPERATE_RET rt = tal_net_connect(fd, ip_addr, OPENCLAW_GATEWAY_PORT);
+    OPERATE_RET rt = tal_net_connect(fd, ip_addr, (uint16_t)s_gw_port);
     if (rt != OPRT_OK) {
         PR_ERR("acp tcp connect failed rt=%d host=%s port=%u",
-               rt, OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
+               rt, s_gw_host, s_gw_port);
         tal_net_close(fd);
         return rt;
     }
     PR_INFO("acp tcp connected fd=%d host=%s:%u",
-            fd, OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
+            fd, s_gw_host, s_gw_port);
 
-    rt = __ws_upgrade(fd, OPENCLAW_GATEWAY_HOST, OPENCLAW_GATEWAY_PORT);
+    rt = __ws_upgrade(fd, s_gw_host, (uint16_t)s_gw_port);
     if (rt != OPRT_OK) {
         tal_net_close(fd);
         return rt;
@@ -1559,6 +1574,8 @@ OPERATE_RET __acp_client_init_evt_cb(void *data)
     s_ctx.fd    = -1;
     s_ctx.state = ACP_STATE_DISCONNECTED;
 
+    acp_load_config();
+
     OPERATE_RET rt = tal_mutex_create_init(&s_ctx.tx_mutex);
     if (rt != OPRT_OK) {
         PR_ERR("acp mutex create failed rt=%d", rt);
@@ -1595,7 +1612,7 @@ OPERATE_RET __acp_client_init_evt_cb(void *data)
 #endif
 
     PR_INFO("acp client init ok host=%s port=%u",
-            OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
+            s_gw_host, s_gw_port);
     return OPRT_OK;
 }
 

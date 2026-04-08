@@ -29,6 +29,7 @@
 #include "tal_cli.h"
 #include "tal_fs.h"
 #include "tuya_iot.h"
+#include "app_config_kv.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -382,6 +383,183 @@ static void fs_mv(int argc, char *argv[])
     cli_echof("fs_mv rt=%d", rt);
 }
 
+/* ------------------------------------------------------------------ */
+/*  Config display helper (mirrors IM serial_cli.c pattern)            */
+/* ------------------------------------------------------------------ */
+
+static void mask_str(const char *src, char *out, size_t out_size)
+{
+    if (!out || out_size == 0) return;
+    if (!src || src[0] == '\0') { snprintf(out, out_size, "(empty)"); return; }
+    size_t len = strlen(src);
+    if (len <= 4) {
+        snprintf(out, out_size, "****");
+    } else {
+        snprintf(out, out_size, "%.4s****", src);
+    }
+}
+
+static void print_cfg_item(const char *label, const char *kv_key, const char *build_val, int mask)
+{
+    char        kv_val[128] = {0};
+    const char *src         = "not set";
+    const char *val         = "(empty)";
+
+    uint8_t *buf = NULL;
+    size_t   len = 0;
+    if (tal_kv_get(kv_key, &buf, &len) == OPRT_OK && buf && len > 0 && ((char *)buf)[0] != '\0') {
+        size_t copy = (len < sizeof(kv_val) - 1) ? len : (sizeof(kv_val) - 1);
+        memcpy(kv_val, buf, copy);
+        kv_val[copy] = '\0';
+        src = "kv";
+        val = kv_val;
+    } else if (build_val && build_val[0] != '\0') {
+        src = "build";
+        val = build_val;
+    }
+    if (buf) tal_kv_free(buf);
+
+    if (mask && strcmp(val, "(empty)") != 0) {
+        char masked[64] = {0};
+        mask_str(val, masked, sizeof(masked));
+        cli_echof("  %-20s %s [%s]", label, masked, src);
+    } else {
+        cli_echof("  %-20s %s [%s]", label, val, src);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/*  help - show all available commands                                 */
+/* ------------------------------------------------------------------ */
+
+static void cmd_help(int argc, char *argv[]);   /* forward decl */
+
+/* ------------------------------------------------------------------ */
+/*  config_show - display all effective configuration                  */
+/* ------------------------------------------------------------------ */
+
+static void cmd_config_show(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+
+    tal_cli_echo("--- App config (effective) ---");
+
+    tal_cli_echo("[Tuya Cloud]");
+    print_cfg_item("product_id", APP_KV_PRODUCT_ID, TUYA_PRODUCT_ID, 0);
+    print_cfg_item("uuid", APP_KV_UUID, TUYA_OPENSDK_UUID, 1);
+    print_cfg_item("authkey", APP_KV_AUTHKEY, TUYA_OPENSDK_AUTHKEY, 1);
+
+    tal_cli_echo("[WebSocket]");
+    print_cfg_item("ws_token", APP_KV_WS_TOKEN, CLAW_WS_AUTH_TOKEN, 1);
+
+    tal_cli_echo("[OpenClaw Gateway]");
+    print_cfg_item("gw_host", APP_KV_GW_HOST, OPENCLAW_GATEWAY_HOST, 0);
+    {
+        char port_str[8] = {0};
+        snprintf(port_str, sizeof(port_str), "%u", (unsigned)OPENCLAW_GATEWAY_PORT);
+        print_cfg_item("gw_port", APP_KV_GW_PORT, port_str, 0);
+    }
+    print_cfg_item("gw_token", APP_KV_GW_TOKEN, OPENCLAW_GATEWAY_TOKEN, 1);
+    print_cfg_item("device_id", APP_KV_DEVICE_ID, DUCKYCLAW_DEVICE_ID, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/*  config_set_* - set individual config items via KV                  */
+/* ------------------------------------------------------------------ */
+
+static void cmd_set_product_id(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_product_id <id>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_PRODUCT_ID, argv[1]);
+    cli_echof("%s: set_product_id rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_uuid(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_uuid <uuid>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_UUID, argv[1]);
+    cli_echof("%s: set_uuid rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_authkey(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_authkey <authkey>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_AUTHKEY, argv[1]);
+    cli_echof("%s: set_authkey rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_ws_token(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_ws_token <token>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_WS_TOKEN, argv[1]);
+    cli_echof("%s: set_ws_token rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_gw_host(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_gw_host <host>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_GW_HOST, argv[1]);
+    cli_echof("%s: set_gw_host rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_gw_port(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_gw_port <port>"); return; }
+    long port = strtol(argv[1], NULL, 10);
+    if (port <= 0 || port > 65535) { tal_cli_echo("ERR: invalid port (1..65535)"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_GW_PORT, argv[1]);
+    cli_echof("%s: set_gw_port rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_gw_token(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_gw_token <token>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_GW_TOKEN, argv[1]);
+    cli_echof("%s: set_gw_token rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+static void cmd_set_device_id(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("Usage: set_device_id <id>"); return; }
+    OPERATE_RET rt = app_kv_set_string(APP_KV_DEVICE_ID, argv[1]);
+    cli_echof("%s: set_device_id rt=%d", rt == OPRT_OK ? "OK" : "ERR", rt);
+}
+
+/* ------------------------------------------------------------------ */
+/*  config_clear - clear all app KV overrides                          */
+/* ------------------------------------------------------------------ */
+
+static void cmd_config_clear(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+
+    static const char *const keys[] = {
+        APP_KV_PRODUCT_ID, APP_KV_UUID, APP_KV_AUTHKEY,
+        APP_KV_WS_TOKEN, APP_KV_GW_HOST, APP_KV_GW_PORT,
+        APP_KV_GW_TOKEN, APP_KV_DEVICE_ID,
+    };
+
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+        (void)app_kv_del(keys[i]);
+    }
+    tal_cli_echo("OK: cleared all app config KV overrides (fallback to build defaults).");
+}
+
+/* ------------------------------------------------------------------ */
+/*  list - show all KV entries (via tal_kv_cmd "list")                */
+/* ------------------------------------------------------------------ */
+
+static void cmd_list(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+    char *list_argv[] = {"kv", "list"};
+    tal_kv_cmd(2, list_argv);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Existing commands                                                  */
+/* ------------------------------------------------------------------ */
+
 /**
  * @brief switch demo on/off cmd
  *
@@ -490,14 +668,30 @@ static void stop(int argc, char *argv[])
  *
  */
 static cli_cmd_t s_cli_cmd[] = {
+    /* --- General --- */
+    {.name = "help",            .func = cmd_help,          .help = "Show all commands"},
+    {.name = "list",            .func = cmd_list,          .help = "List all KV entries"},
+    {.name = "config_show",     .func = cmd_config_show,   .help = "Show app config (kv/build)"},
+    {.name = "config_clear",    .func = cmd_config_clear,  .help = "Clear all app config KV overrides"},
+    /* --- Config set --- */
+    {.name = "set_product_id",  .func = cmd_set_product_id,  .help = "Set Tuya product_id"},
+    {.name = "set_uuid",        .func = cmd_set_uuid,        .help = "Set Tuya uuid"},
+    {.name = "set_authkey",     .func = cmd_set_authkey,     .help = "Set Tuya authkey"},
+    {.name = "set_ws_token",    .func = cmd_set_ws_token,    .help = "Set WebSocket auth token"},
+    {.name = "set_gw_host",     .func = cmd_set_gw_host,     .help = "Set OpenClaw gateway host"},
+    {.name = "set_gw_port",     .func = cmd_set_gw_port,     .help = "Set OpenClaw gateway port"},
+    {.name = "set_gw_token",    .func = cmd_set_gw_token,    .help = "Set OpenClaw gateway token"},
+    {.name = "set_device_id",   .func = cmd_set_device_id,   .help = "Set DuckyClaw device ID"},
+    /* --- System --- */
     {.name = "switch", .func = switch_test, .help = "switch test"},
-    {.name = "kv", .func = tal_kv_cmd, .help = "kv test"},
-    {.name = "sys", .func = system_cmd, .help = "system  cmd"},
-    {.name = "reset", .func = reset, .help = "reset iot"},
-    {.name = "stop", .func = stop, .help = "stop iot"},
-    {.name = "start", .func = start, .help = "start iot"},
-    {.name = "mem", .func = mem, .help = "mem size"},
-    {.name = "netmgr", .func = netmgr_cmd, .help = "netmgr cmd"},
+    {.name = "kv", .func = tal_kv_cmd, .help = "kv operations (get/set/del/list)"},
+    {.name = "sys", .func = system_cmd, .help = "Execute system command"},
+    {.name = "reset", .func = reset, .help = "Reset IoT (unactivate)"},
+    {.name = "stop", .func = stop, .help = "Stop IoT process"},
+    {.name = "start", .func = start, .help = "Start IoT process"},
+    {.name = "mem", .func = mem, .help = "Show free heap memory"},
+    {.name = "netmgr", .func = netmgr_cmd, .help = "Network manager cmd"},
+    /* --- Filesystem --- */
     {.name = "fs_help", .func = fs_help, .help = "Filesystem help"},
     {.name = "fs_ls", .func = fs_ls, .help = "List directory"},
     {.name = "fs_stat", .func = fs_stat, .help = "Stat path"},
@@ -509,6 +703,61 @@ static cli_cmd_t s_cli_cmd[] = {
     {.name = "fs_mkdir", .func = fs_mkdir, .help = "Make directory"},
     {.name = "fs_mv", .func = fs_mv, .help = "Rename/move"},
 };
+
+/* help implementation (needs s_cli_cmd to be defined) */
+static void cmd_help(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+
+    tal_cli_echo("=== DuckyClaw CLI Commands ===");
+
+    tal_cli_echo("");
+    tal_cli_echo("[General]");
+    cli_echof("  %-20s %s", "help", "Show this help message");
+    cli_echof("  %-20s %s", "list", "List all KV storage entries");
+    cli_echof("  %-20s %s", "config_show", "Show effective app config (kv overrides / build defaults)");
+    cli_echof("  %-20s %s", "config_clear", "Clear all app config KV overrides");
+
+    tal_cli_echo("");
+    tal_cli_echo("[Config Set]");
+    cli_echof("  %-20s %s", "set_product_id <id>", "Set Tuya product ID");
+    cli_echof("  %-20s %s", "set_uuid <uuid>", "Set Tuya OpenSDK UUID");
+    cli_echof("  %-20s %s", "set_authkey <key>", "Set Tuya OpenSDK auth key");
+    cli_echof("  %-20s %s", "set_ws_token <token>", "Set WebSocket authentication token");
+    cli_echof("  %-20s %s", "set_gw_host <host>", "Set OpenClaw gateway host");
+    cli_echof("  %-20s %s", "set_gw_port <port>", "Set OpenClaw gateway port");
+    cli_echof("  %-20s %s", "set_gw_token <token>", "Set OpenClaw gateway token");
+    cli_echof("  %-20s %s", "set_device_id <id>", "Set DuckyClaw device ID");
+
+    tal_cli_echo("");
+    tal_cli_echo("[System]");
+    cli_echof("  %-20s %s", "switch <on|off>", "Switch demo on/off");
+    cli_echof("  %-20s %s", "kv <cmd> [args]", "KV operations (get/set/del/list)");
+    cli_echof("  %-20s %s", "sys <cmd>", "Execute system shell command");
+    cli_echof("  %-20s %s", "reset", "Reset IoT (unactivate device)");
+    cli_echof("  %-20s %s", "stop", "Stop IoT process");
+    cli_echof("  %-20s %s", "start", "Start IoT process");
+    cli_echof("  %-20s %s", "mem", "Show current free heap memory");
+    cli_echof("  %-20s %s", "netmgr", "Network manager command");
+
+    tal_cli_echo("");
+    tal_cli_echo("[Filesystem]");
+    cli_echof("  %-20s %s", "fs_help", "Show filesystem command details");
+    cli_echof("  %-20s %s", "fs_ls [dir]", "List directory (default: /)");
+    cli_echof("  %-20s %s", "fs_stat <path>", "Show file/dir info");
+    cli_echof("  %-20s %s", "fs_cat <file> [max]", "Print text file");
+    cli_echof("  %-20s %s", "fs_hexdump <file>", "Hex dump of file");
+    cli_echof("  %-20s %s", "fs_write <f> <text>", "Write file (overwrite)");
+    cli_echof("  %-20s %s", "fs_append <f> <text>", "Append to file");
+    cli_echof("  %-20s %s", "fs_rm <path>", "Remove file/dir");
+    cli_echof("  %-20s %s", "fs_mkdir <dir>", "Create directory");
+    cli_echof("  %-20s %s", "fs_mv <old> <new>", "Rename/move");
+
+    tal_cli_echo("");
+    tal_cli_echo("[IM] (type im_help for IM-specific commands)");
+    tal_cli_echo("");
+    tal_cli_echo("Note: config changes take effect after reboot.");
+}
 
 /**
  * @brief
