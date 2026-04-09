@@ -72,7 +72,7 @@ tuya_iot_license_t license;
 #define DPID_VOLUME 3
 
 static uint8_t _need_reset = 0;
-
+static char kv_product_id[32] = {0};
 extern void tuya_app_cli_init(void);
 /**
  * @brief user defined log output api, in this demo, it will use uart0 as log-tx
@@ -359,7 +359,6 @@ void user_main(void)
     }
 
     /* Read product_id from KV (fallback to compile-time macro) */
-    static char kv_product_id[32] = {0};
     app_cfg_get_product_id(kv_product_id, sizeof(kv_product_id));
 
     /* Initialize Tuya device configuration */

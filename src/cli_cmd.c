@@ -13,7 +13,6 @@
 #include "channels/telegram_bot.h"
 #include "im_config.h"
 #include "im_platform.h"
-#include "netconn_wifi.h"
 #include "proxy/http_proxy.h"
 #include "tools/tool_files.h"
 #include "tuya_authorize.h"
@@ -26,6 +25,7 @@
 #include "tal_sw_timer.h"
 #include "tuya_iot.h"
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
+#include "netconn_wifi.h"
 #include "tal_wifi.h"
 #endif
 
@@ -35,6 +35,7 @@
 #include <string.h>
 
 extern void netmgr_cmd(int argc, char *argv[]);
+extern void tal_kv_cmd(int argc, char *argv[]);
 extern void tal_thread_dump_watermark(void);
 
 /* ---------------------------------------------------------------------------
@@ -131,7 +132,7 @@ static void cmd_cfg_clear_proxy(int argc, char *argv[]);
  * @param[in] ... format arguments
  * @return none
  */
-static void __cli_echof(const char *fmt, ...)
+static void cli_echof_(const char *fmt, ...)
 {
     char    line[CLI_LINE_SIZE] = {0};
     va_list args;
@@ -152,7 +153,7 @@ static void __cli_echof(const char *fmt, ...)
  * @param[in] out_size output buffer size
  * @return true if at least one argument was joined, false otherwise
  */
-static bool __join_args(int argc, char *argv[], int start, char *out, size_t out_size)
+static bool cli_join_args_(int argc, char *argv[], int start, char *out, size_t out_size)
 {
     size_t offset = 0;
 
@@ -187,7 +188,7 @@ static bool __join_args(int argc, char *argv[], int start, char *out, size_t out
  * @param[in] out_size masked output buffer size
  * @return none
  */
-static void __mask_copy(const char *src, char *out, size_t out_size)
+static void cli_mask_copy_(const char *src, char *out, size_t out_size)
 {
     size_t len;
     size_t head_len;
@@ -216,7 +217,7 @@ static void __mask_copy(const char *src, char *out, size_t out_size)
  * @param[in] value boolean input
  * @return textual representation
  */
-static const char *__bool_to_str(bool value)
+static const char *cli_bool_to_str_(bool value)
 {
     return value ? "true" : "false";
 }
@@ -226,7 +227,7 @@ static const char *__bool_to_str(bool value)
  * @param[in] level log level enum
  * @return textual representation
  */
-static const char *__log_level_to_str(TAL_LOG_LEVEL_E level)
+static const char *cli_log_level_to_str_(TAL_LOG_LEVEL_E level)
 {
     switch (level) {
     case TAL_LOG_LEVEL_ERR:
@@ -252,7 +253,7 @@ static const char *__log_level_to_str(TAL_LOG_LEVEL_E level)
  * @param[out] level parsed log level
  * @return true on success, false on invalid text
  */
-static bool __parse_log_level(const char *text, TAL_LOG_LEVEL_E *level)
+static bool cli_parse_log_level_(const char *text, TAL_LOG_LEVEL_E *level)
 {
     if (text == NULL || level == NULL) {
         return false;
@@ -285,7 +286,7 @@ static bool __parse_log_level(const char *text, TAL_LOG_LEVEL_E *level)
  * @param[in] mask whether to mask value
  * @return none
  */
-static void __print_app_cfg_item(const char *label, const char *kv_key, const char *build_value, bool mask)
+static void cli_print_app_cfg_item_(const char *label, const char *kv_key, const char *build_value, bool mask)
 {
     char        kv_value[CLI_VALUE_SIZE] = {0};
     char        masked[CLI_MASK_SIZE]    = {0};
@@ -310,12 +311,12 @@ static void __print_app_cfg_item(const char *label, const char *kv_key, const ch
     }
 
     if (mask && strcmp(value, "(empty)") != 0) {
-        __mask_copy(value, masked, sizeof(masked));
-        __cli_echof("  %-18s %s [%s]", label, masked, source);
+        cli_mask_copy_(value, masked, sizeof(masked));
+        cli_echof_("  %-18s %s [%s]", label, masked, source);
         return;
     }
 
-    __cli_echof("  %-18s %s [%s]", label, value, source);
+    cli_echof_("  %-18s %s [%s]", label, value, source);
 }
 
 /**
@@ -326,7 +327,7 @@ static void __print_app_cfg_item(const char *label, const char *kv_key, const ch
  * @param[in] mask whether to mask value
  * @return none
  */
-static void __print_cfg_value_item(const char *label, const char *value, const char *source, bool mask)
+static void cli_print_cfg_value_item_(const char *label, const char *value, const char *source, bool mask)
 {
     char        masked[CLI_MASK_SIZE] = {0};
     const char *display_value         = value;
@@ -340,12 +341,12 @@ static void __print_cfg_value_item(const char *label, const char *value, const c
     }
 
     if (mask && strcmp(display_value, "(empty)") != 0) {
-        __mask_copy(display_value, masked, sizeof(masked));
-        __cli_echof("  %-18s %s [%s]", label, masked, source);
+        cli_mask_copy_(display_value, masked, sizeof(masked));
+        cli_echof_("  %-18s %s [%s]", label, masked, source);
         return;
     }
 
-    __cli_echof("  %-18s %s [%s]", label, display_value, source);
+    cli_echof_("  %-18s %s [%s]", label, display_value, source);
 }
 
 /**
@@ -357,7 +358,7 @@ static void __print_cfg_value_item(const char *label, const char *value, const c
  * @param[in] mask whether to mask value
  * @return none
  */
-static void __print_im_cfg_item(const char *label, const char *ns, const char *key, const char *build_value, bool mask)
+static void cli_print_im_cfg_item_(const char *label, const char *ns, const char *key, const char *build_value, bool mask)
 {
     char        kv_value[CLI_VALUE_SIZE] = {0};
     char        masked[CLI_MASK_SIZE]    = {0};
@@ -373,19 +374,19 @@ static void __print_im_cfg_item(const char *label, const char *ns, const char *k
     }
 
     if (mask && strcmp(value, "(empty)") != 0) {
-        __mask_copy(value, masked, sizeof(masked));
-        __cli_echof("  %-18s %s [%s]", label, masked, source);
+        cli_mask_copy_(value, masked, sizeof(masked));
+        cli_echof_("  %-18s %s [%s]", label, masked, source);
         return;
     }
 
-    __cli_echof("  %-18s %s [%s]", label, value, source);
+    cli_echof_("  %-18s %s [%s]", label, value, source);
 }
 
 /**
  * @brief Clear all application config KV overrides.
  * @return none
  */
-static void __clear_app_cfg_overrides(void)
+static void cli_clear_app_cfg_overrides_(void)
 {
     static const char *const s_keys[] = {
         APP_KV_PRODUCT_ID,
@@ -407,7 +408,7 @@ static void __clear_app_cfg_overrides(void)
  * @brief Clear all IM config KV overrides.
  * @return none
  */
-static void __clear_im_cfg_overrides(void)
+static void cli_clear_im_cfg_overrides_(void)
 {
     (void)im_kv_del(IM_NVS_BOT, IM_NVS_KEY_CHANNEL_MODE);
 
@@ -431,14 +432,14 @@ static void __clear_im_cfg_overrides(void)
  * @param[in] usage usage text
  * @return none
  */
-static void __set_authorize_pair(int argc, char *argv[], const char *usage)
+static void cli_set_authorize_pair_(int argc, char *argv[], const char *usage)
 {
     const char *uuid    = NULL;
     const char *authkey = NULL;
     OPERATE_RET rt;
 
     if (argc < 3) {
-        __cli_echof("Usage: %s", usage);
+        cli_echof_("Usage: %s", usage);
         return;
     }
 
@@ -446,19 +447,19 @@ static void __set_authorize_pair(int argc, char *argv[], const char *usage)
     authkey = argv[2];
 
     if (strlen(uuid) != CLI_UUID_LENGTH) {
-        __cli_echof("ERR: uuid length must be %u", (unsigned)CLI_UUID_LENGTH);
+        cli_echof_("ERR: uuid length must be %u", (unsigned)CLI_UUID_LENGTH);
         return;
     }
 
     if (strlen(authkey) != CLI_AUTHKEY_LENGTH) {
-        __cli_echof("ERR: authkey length must be %u", (unsigned)CLI_AUTHKEY_LENGTH);
+        cli_echof_("ERR: authkey length must be %u", (unsigned)CLI_AUTHKEY_LENGTH);
         return;
     }
 
     tal_cli_echo("Applying authorization update, device will reboot on success.");
     rt = tuya_authorize_write(uuid, authkey);
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: cfg_set_auth rt=%d", rt);
+        cli_echof_("ERR: cfg_set_auth rt=%d", rt);
     }
 }
 
@@ -471,17 +472,17 @@ static void __set_authorize_pair(int argc, char *argv[], const char *usage)
  * @param[in] label logical field label
  * @return none
  */
-static void __set_app_cfg_value(int argc, char *argv[], const char *usage, const char *kv_key, const char *label)
+static void cli_set_app_cfg_value_(int argc, char *argv[], const char *usage, const char *kv_key, const char *label)
 {
     OPERATE_RET rt;
 
     if (argc < 2) {
-        __cli_echof("Usage: %s", usage);
+        cli_echof_("Usage: %s", usage);
         return;
     }
 
     rt = app_kv_set_string(kv_key, argv[1]);
-    __cli_echof("%s: %s rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", label, rt);
+    cli_echof_("%s: %s rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", label, rt);
 }
 
 /**
@@ -493,22 +494,22 @@ static void __set_app_cfg_value(int argc, char *argv[], const char *usage, const
  * @param[in] setter setter callback
  * @return none
  */
-static void __set_im_cfg_value(int argc, char *argv[], const char *usage, const char *label, CLI_SETTER_CB setter)
+static void cli_set_im_cfg_value_(int argc, char *argv[], const char *usage, const char *label, CLI_SETTER_CB setter)
 {
     OPERATE_RET rt;
 
     if (argc < 2) {
-        __cli_echof("Usage: %s", usage);
+        cli_echof_("Usage: %s", usage);
         return;
     }
 
     rt = setter(argv[1]);
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: %s rt=%d", label, rt);
+        cli_echof_("ERR: %s rt=%d", label, rt);
         return;
     }
 
-    __cli_echof("OK: %s saved to KV", label);
+    cli_echof_("OK: %s saved to KV", label);
 }
 
 /**
@@ -518,7 +519,7 @@ static void __set_im_cfg_value(int argc, char *argv[], const char *usage, const 
  * @param[in] out_size output buffer size
  * @return none
  */
-static void __format_mac(const NW_MAC_S *mac, char *out, size_t out_size)
+static void cli_format_mac_(const NW_MAC_S *mac, char *out, size_t out_size)
 {
     if (mac == NULL || out == NULL || out_size == 0) {
         return;
@@ -532,11 +533,11 @@ static void __format_mac(const NW_MAC_S *mac, char *out, size_t out_size)
  * @brief Print current heap information.
  * @return none
  */
-static void __print_heap_info(void)
+static void cli_print_heap_info_(void)
 {
-    __cli_echof("heap.free         %d", tal_system_get_free_heap_size());
+    cli_echof_("heap.free         %d", tal_system_get_free_heap_size());
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
-    __cli_echof("psram.free        %d", tal_psram_get_free_heap_size());
+    cli_echof_("psram.free        %d", tal_psram_get_free_heap_size());
 #endif
 }
 
@@ -544,7 +545,7 @@ static void __print_heap_info(void)
  * @brief Print current WiFi connection details.
  * @return none
  */
-static void __print_wifi_info(void)
+static void cli_print_wifi_info_(void)
 {
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
     netconn_wifi_info_t wifi_info    = {0};
@@ -554,20 +555,20 @@ static void __print_wifi_info(void)
 
     rt = netmgr_conn_get(NETCONN_WIFI, NETCONN_CMD_SSID_PSWD, &wifi_info);
     if (rt == OPRT_OK && wifi_info.ssid[0] != '\0') {
-        __cli_echof("wifi.ssid        %s", wifi_info.ssid);
+        cli_echof_("wifi.ssid        %s", wifi_info.ssid);
     } else if (rt == OPRT_OK) {
-        __cli_echof("wifi.ssid        (empty)");
+        cli_echof_("wifi.ssid        (empty)");
     } else {
-        __cli_echof("wifi.ssid        unavailable (rt=%d)", rt);
+        cli_echof_("wifi.ssid        unavailable (rt=%d)", rt);
     }
 
     if (tal_wifi_get_bssid(bssid) == OPRT_OK) {
-        __cli_echof("wifi.bssid       %02X:%02X:%02X:%02X:%02X:%02X",
+        cli_echof_("wifi.bssid       %02X:%02X:%02X:%02X:%02X:%02X",
                      bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
     }
 
     if (tal_wifi_station_get_conn_ap_rssi(&wifi_rssi) == OPRT_OK) {
-        __cli_echof("wifi.rssi        %d dBm", wifi_rssi);
+        cli_echof_("wifi.rssi        %d dBm", wifi_rssi);
     }
 #endif
 }
@@ -576,7 +577,7 @@ static void __print_wifi_info(void)
  * @brief Print current network information.
  * @return none
  */
-static void __print_network_info(void)
+static void cli_print_network_info_(void)
 {
     netmgr_status_e status = NETMGR_LINK_DOWN;
     NW_IP_S         ip     = {0};
@@ -586,37 +587,37 @@ static void __print_network_info(void)
 
     rt = netmgr_conn_get(NETCONN_AUTO, NETCONN_CMD_STATUS, &status);
     if (rt == OPRT_OK) {
-        __cli_echof("network.status   %s", NETMGR_STATUS_TO_STR(status));
+        cli_echof_("network.status   %s", NETMGR_STATUS_TO_STR(status));
     } else {
-        __cli_echof("network.status   unavailable (rt=%d)", rt);
+        cli_echof_("network.status   unavailable (rt=%d)", rt);
     }
 
     rt = netmgr_conn_get(NETCONN_AUTO, NETCONN_CMD_IP, &ip);
     if (rt == OPRT_OK) {
 #if defined(ENABLE_IPv6) && (ENABLE_IPv6 == 1)
         if (IS_NW_IPV6_ADDR(&ip)) {
-            __cli_echof("network.ip       %s", ip.addr.ip6.ip);
+            cli_echof_("network.ip       %s", ip.addr.ip6.ip);
         } else {
-            __cli_echof("network.ip       %s", ip.nwipstr);
-            __cli_echof("network.mask     %s", ip.nwmaskstr);
-            __cli_echof("network.gw       %s", ip.nwgwstr);
+            cli_echof_("network.ip       %s", ip.nwipstr);
+            cli_echof_("network.mask     %s", ip.nwmaskstr);
+            cli_echof_("network.gw       %s", ip.nwgwstr);
         }
 #else
-        __cli_echof("network.ip       %s", ip.ip);
-        __cli_echof("network.mask     %s", ip.mask);
-        __cli_echof("network.gw       %s", ip.gw);
-        __cli_echof("network.dns      %s", ip.dns);
-        __cli_echof("network.dhcp     %s", __bool_to_str(ip.dhcpen == TRUE));
+        cli_echof_("network.ip       %s", ip.ip);
+        cli_echof_("network.mask     %s", ip.mask);
+        cli_echof_("network.gw       %s", ip.gw);
+        cli_echof_("network.dns      %s", ip.dns);
+        cli_echof_("network.dhcp     %s", cli_bool_to_str_(ip.dhcpen == TRUE));
 #endif
     }
 
     rt = netmgr_conn_get(NETCONN_AUTO, NETCONN_CMD_MAC, &mac);
     if (rt == OPRT_OK) {
-        __format_mac(&mac, mac_text, sizeof(mac_text));
-        __cli_echof("network.mac      %s", mac_text);
+        cli_format_mac_(&mac, mac_text, sizeof(mac_text));
+        cli_echof_("network.mac      %s", mac_text);
     }
 
-    __print_wifi_info();
+    cli_print_wifi_info_();
 }
 
 /**
@@ -625,7 +626,7 @@ static void __print_network_info(void)
  * @param[in] length buffer length
  * @return none
  */
-static void __print_kv_binary_preview(const uint8_t *value, size_t length)
+static void cli_print_kv_binary_preview_(const uint8_t *value, size_t length)
 {
     char  line[CLI_LINE_SIZE] = {0};
     int   pos                 = 0;
@@ -649,7 +650,7 @@ static void __print_kv_binary_preview(const uint8_t *value, size_t length)
  * @param[in] length buffer length
  * @return true if value can be shown as text, false otherwise
  */
-static bool __kv_value_is_text(const uint8_t *value, size_t length)
+static bool cli_kv_value_is_text_(const uint8_t *value, size_t length)
 {
     size_t text_len = length;
 
@@ -681,7 +682,7 @@ static bool __kv_value_is_text(const uint8_t *value, size_t length)
  * @param[in] out_size output path buffer size
  * @return none
  */
-static void __fs_join_path(const char *dir, const char *name, char *out, size_t out_size)
+static void cli_fs_join_path_(const char *dir, const char *name, char *out, size_t out_size)
 {
     size_t dir_len;
 
@@ -716,34 +717,34 @@ static void __fs_join_path(const char *dir, const char *name, char *out, size_t 
  * @param[in] argv CLI argv
  * @return none
  */
-static void __fs_write_impl(const char *path, const char *mode, int argc, char *argv[])
+static void cli_fs_write_impl_(const char *path, const char *mode, int argc, char *argv[])
 {
     TUYA_FILE file;
     char      content[CLI_VALUE_SIZE] = {0};
     int       written;
 
     if (argc < 3) {
-        __cli_echof("Usage: %s <file> <content...>", argv[0]);
+        cli_echof_("Usage: %s <file> <content...>", argv[0]);
         return;
     }
 
     file = claw_fopen(path, mode);
     if (file == NULL) {
-        __cli_echof("ERR: claw_fopen('%s','%s') failed", path, mode);
+        cli_echof_("ERR: claw_fopen('%s','%s') failed", path, mode);
         return;
     }
 
-    (void)__join_args(argc, argv, 2, content, sizeof(content));
+    (void)cli_join_args_(argc, argv, 2, content, sizeof(content));
     written = claw_fwrite(content, (int)strlen(content), file);
     (void)claw_fsync(file);
     (void)claw_fclose(file);
 
     if (written < 0) {
-        __cli_echof("ERR: write failed n=%d", written);
+        cli_echof_("ERR: write failed n=%d", written);
         return;
     }
 
-    __cli_echof("OK: wrote %d bytes to %s", written, path);
+    cli_echof_("OK: wrote %d bytes to %s", written, path);
 }
 
 /**
@@ -751,12 +752,12 @@ static void __fs_write_impl(const char *path, const char *mode, int argc, char *
  * @param[in] enabled target state
  * @return none
  */
-static void __report_switch_state(bool enabled)
+static void cli_report_switch_state_(bool enabled)
 {
     const char *payload = enabled ? "{\"1\": true}" : "{\"1\": false}";
     OPERATE_RET rt      = tuya_iot_dp_report_json(tuya_iot_client_get(), payload);
 
-    __cli_echof("%s: sys_switch rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: sys_switch rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /* ---------------------------------------------------------------------------
@@ -777,68 +778,68 @@ static void cmd_help(int argc, char *argv[])
     tal_cli_echo("");
 
     tal_cli_echo("[System]");
-    __cli_echof("  %-28s %s", "sys_status", "Show device runtime status");
-    __cli_echof("  %-28s %s", "sys_heap", "Show free heap/PSRAM");
-    __cli_echof("  %-28s %s", "sys_thread", "Dump all thread watermark info");
-    __cli_echof("  %-28s %s", "sys_uptime", "Show uptime in readable format");
-    __cli_echof("  %-28s %s", "sys_tick", "Show system tick count and uptime ms");
-    __cli_echof("  %-28s %s", "sys_version", "Show app, SDK, and platform version");
-    __cli_echof("  %-28s %s", "sys_log_level [level]", "Get or set log level");
-    __cli_echof("  %-28s %s", "sys_reboot", "Reboot device");
-    __cli_echof("  %-28s %s", "sys_random [range]", "Generate random number");
-    __cli_echof("  %-28s %s", "sys_timer_count", "Show active software timers");
-    __cli_echof("  %-28s %s", "sys_iot_start", "Start Tuya IoT client");
-    __cli_echof("  %-28s %s", "sys_iot_stop", "Stop Tuya IoT client");
-    __cli_echof("  %-28s %s", "sys_iot_restart", "Restart Tuya IoT client");
-    __cli_echof("  %-28s %s", "sys_iot_reset", "Unactivate/reset Tuya IoT client");
-    __cli_echof("  %-28s %s", "sys_netmgr [args...]", "Pass through to netmgr CLI");
-    __cli_echof("  %-28s %s", "sys_exec <cmd...>", "Execute shell command (Linux only)");
-    __cli_echof("  %-28s %s", "sys_switch <on|off>", "Report demo switch datapoint");
+    cli_echof_("  %-28s %s", "sys_status", "Show device runtime status");
+    cli_echof_("  %-28s %s", "sys_heap", "Show free heap/PSRAM");
+    cli_echof_("  %-28s %s", "sys_thread", "Dump all thread watermark info");
+    cli_echof_("  %-28s %s", "sys_uptime", "Show uptime in readable format");
+    cli_echof_("  %-28s %s", "sys_tick", "Show system tick count and uptime ms");
+    cli_echof_("  %-28s %s", "sys_version", "Show app, SDK, and platform version");
+    cli_echof_("  %-28s %s", "sys_log_level [level]", "Get or set log level");
+    cli_echof_("  %-28s %s", "sys_reboot", "Reboot device");
+    cli_echof_("  %-28s %s", "sys_random [range]", "Generate random number");
+    cli_echof_("  %-28s %s", "sys_timer_count", "Show active software timers");
+    cli_echof_("  %-28s %s", "sys_iot_start", "Start Tuya IoT client");
+    cli_echof_("  %-28s %s", "sys_iot_stop", "Stop Tuya IoT client");
+    cli_echof_("  %-28s %s", "sys_iot_restart", "Restart Tuya IoT client");
+    cli_echof_("  %-28s %s", "sys_iot_reset", "Unactivate/reset Tuya IoT client");
+    cli_echof_("  %-28s %s", "sys_netmgr [args...]", "Pass through to netmgr CLI");
+    cli_echof_("  %-28s %s", "sys_exec <cmd...>", "Execute shell command (Linux only)");
+    cli_echof_("  %-28s %s", "sys_switch <on|off>", "Report demo switch datapoint");
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
-    __cli_echof("  %-28s %s", "sys_wifi_info", "Show current WiFi SSID/BSSID/RSSI");
-    __cli_echof("  %-28s %s", "sys_wifi_scan", "Scan nearby WiFi APs");
+    cli_echof_("  %-28s %s", "sys_wifi_info", "Show current WiFi SSID/BSSID/RSSI");
+    cli_echof_("  %-28s %s", "sys_wifi_scan", "Scan nearby WiFi APs");
 #endif
     tal_cli_echo("");
 
     tal_cli_echo("[Filesystem]");
-    __cli_echof("  %-28s %s", "fs_ls [dir]", "List directory");
-    __cli_echof("  %-28s %s", "fs_stat <path>", "Show exist/type/size/mode");
-    __cli_echof("  %-28s %s", "fs_cat <file> [max_bytes]", "Print text file");
-    __cli_echof("  %-28s %s", "fs_hexdump <file> [max_bytes]", "Hex dump file");
-    __cli_echof("  %-28s %s", "fs_write <file> <content...>", "Overwrite file");
-    __cli_echof("  %-28s %s", "fs_append <file> <content...>", "Append file");
-    __cli_echof("  %-28s %s", "fs_rm <path>", "Remove file or directory");
-    __cli_echof("  %-28s %s", "fs_mkdir <dir>", "Create directory");
-    __cli_echof("  %-28s %s", "fs_mv <old> <new>", "Rename or move path");
-    __cli_echof("  %-28s %s", "default root", CLI_FS_DEFAULT_PATH);
+    cli_echof_("  %-28s %s", "fs_ls [dir]", "List directory");
+    cli_echof_("  %-28s %s", "fs_stat <path>", "Show exist/type/size/mode");
+    cli_echof_("  %-28s %s", "fs_cat <file> [max_bytes]", "Print text file");
+    cli_echof_("  %-28s %s", "fs_hexdump <file> [max_bytes]", "Hex dump file");
+    cli_echof_("  %-28s %s", "fs_write <file> <content...>", "Overwrite file");
+    cli_echof_("  %-28s %s", "fs_append <file> <content...>", "Append file");
+    cli_echof_("  %-28s %s", "fs_rm <path>", "Remove file or directory");
+    cli_echof_("  %-28s %s", "fs_mkdir <dir>", "Create directory");
+    cli_echof_("  %-28s %s", "fs_mv <old> <new>", "Rename or move path");
+    cli_echof_("  %-28s %s", "default root", CLI_FS_DEFAULT_PATH);
     tal_cli_echo("");
 
     tal_cli_echo("[KV]");
-    __cli_echof("  %-28s %s", "kv_get <key>", "Read a KV value");
-    __cli_echof("  %-28s %s", "kv_set <key> <value...>", "Write a string KV value");
-    __cli_echof("  %-28s %s", "kv_del <key>", "Delete a KV entry");
-    __cli_echof("  %-28s %s", "kv_list", "List all KV entries");
+    cli_echof_("  %-28s %s", "kv_get <key>", "Read a KV value");
+    cli_echof_("  %-28s %s", "kv_set <key> <value...>", "Write a string KV value");
+    cli_echof_("  %-28s %s", "kv_del <key>", "Delete a KV entry");
+    cli_echof_("  %-28s %s", "kv_list", "List all KV entries");
     tal_cli_echo("");
 
     tal_cli_echo("[Config]");
-    __cli_echof("  %-28s %s", "cfg_show", "Show effective config (KV > build)");
-    __cli_echof("  %-28s %s", "cfg_reset", "Clear all config KV overrides");
-    __cli_echof("  %-28s %s", "cfg_set_product_id <id>", "Set Tuya product_id");
-    __cli_echof("  %-28s %s", "cfg_set_auth <uuid> <authkey>", "Set Tuya uuid and authkey");
-    __cli_echof("  %-28s %s", "cfg_set_ws_token <token>", "Set WebSocket token");
-    __cli_echof("  %-28s %s", "cfg_set_gw_host <host>", "Set OpenClaw gateway host");
-    __cli_echof("  %-28s %s", "cfg_set_gw_port <port>", "Set OpenClaw gateway port");
-    __cli_echof("  %-28s %s", "cfg_set_gw_token <token>", "Set OpenClaw gateway token");
-    __cli_echof("  %-28s %s", "cfg_set_device_id <id>", "Set DuckyClaw device ID");
-    __cli_echof("  %-28s %s", "cfg_set_channel_mode <mode>", "Set IM channel mode (telegram|discord|feishu|weixin)");
-    __cli_echof("  %-28s %s", "cfg_set_tg_token <token>", "Set Telegram token");
-    __cli_echof("  %-28s %s", "cfg_set_dc_token <token>", "Set Discord token");
-    __cli_echof("  %-28s %s", "cfg_set_dc_channel <id>", "Set Discord channel_id");
-    __cli_echof("  %-28s %s", "cfg_set_fs_appid <id>", "Set Feishu app_id");
-    __cli_echof("  %-28s %s", "cfg_set_fs_appsecret <secret>", "Set Feishu app_secret");
-    __cli_echof("  %-28s %s", "cfg_set_fs_allow <csv>", "Set Feishu allow_from CSV");
-    __cli_echof("  %-28s %s", "cfg_set_proxy <host> <port> [type]", "Set outbound proxy");
-    __cli_echof("  %-28s %s", "cfg_clear_proxy", "Clear outbound proxy config");
+    cli_echof_("  %-28s %s", "cfg_show", "Show effective config (KV > build)");
+    cli_echof_("  %-28s %s", "cfg_reset", "Clear all config KV overrides");
+    cli_echof_("  %-28s %s", "cfg_set_product_id <id>", "Set Tuya product_id");
+    cli_echof_("  %-28s %s", "cfg_set_auth <uuid> <authkey>", "Set Tuya uuid and authkey");
+    cli_echof_("  %-28s %s", "cfg_set_ws_token <token>", "Set WebSocket token");
+    cli_echof_("  %-28s %s", "cfg_set_gw_host <host>", "Set OpenClaw gateway host");
+    cli_echof_("  %-28s %s", "cfg_set_gw_port <port>", "Set OpenClaw gateway port");
+    cli_echof_("  %-28s %s", "cfg_set_gw_token <token>", "Set OpenClaw gateway token");
+    cli_echof_("  %-28s %s", "cfg_set_device_id <id>", "Set DuckyClaw device ID");
+    cli_echof_("  %-28s %s", "cfg_set_channel_mode <mode>", "Set IM channel mode (telegram|discord|feishu|weixin)");
+    cli_echof_("  %-28s %s", "cfg_set_tg_token <token>", "Set Telegram token");
+    cli_echof_("  %-28s %s", "cfg_set_dc_token <token>", "Set Discord token");
+    cli_echof_("  %-28s %s", "cfg_set_dc_channel <id>", "Set Discord channel_id");
+    cli_echof_("  %-28s %s", "cfg_set_fs_appid <id>", "Set Feishu app_id");
+    cli_echof_("  %-28s %s", "cfg_set_fs_appsecret <secret>", "Set Feishu app_secret");
+    cli_echof_("  %-28s %s", "cfg_set_fs_allow <csv>", "Set Feishu allow_from CSV");
+    cli_echof_("  %-28s %s", "cfg_set_proxy <host> <port> [type]", "Set outbound proxy");
+    cli_echof_("  %-28s %s", "cfg_clear_proxy", "Clear outbound proxy config");
     tal_cli_echo("");
 
     tal_cli_echo("Note: cfg_* changes take effect after reconnect or reboot.");
@@ -863,17 +864,17 @@ static void cmd_sys_status(int argc, char *argv[])
     (void)argv;
 
     tal_cli_echo("--- System status ---");
-    __cli_echof("system.time.ms         %llu", (unsigned long long)tal_system_get_millisecond());
+    cli_echof_("system.time.ms         %llu", (unsigned long long)tal_system_get_millisecond());
 
     if (tal_log_get_level(&log_level) == OPRT_OK) {
-        __cli_echof("log.level         %s", __log_level_to_str(log_level));
+        cli_echof_("log.level         %s", cli_log_level_to_str_(log_level));
     }
 
     reset_reason = tal_system_get_reset_reason(&reason);
-    __cli_echof("reset.reason      %d (%s)", (int)reset_reason, (reason != NULL) ? reason : "unknown");
+    cli_echof_("reset.reason      %d (%s)", (int)reset_reason, (reason != NULL) ? reason : "unknown");
 
-    __print_heap_info();
-    __print_network_info();
+    cli_print_heap_info_();
+    cli_print_network_info_();
 }
 
 /**
@@ -888,7 +889,7 @@ static void cmd_sys_heap(int argc, char *argv[])
     (void)argv;
 
     tal_cli_echo("--- Heap status ---");
-    __print_heap_info();
+    cli_print_heap_info_();
 }
 
 /**
@@ -918,15 +919,15 @@ static void cmd_sys_version(int argc, char *argv[])
     (void)argv;
 
     tal_cli_echo("--- Version info ---");
-    __cli_echof("project.name      %s", PROJECT_NAME);
-    __cli_echof("project.version   %s", PROJECT_VERSION);
-    __cli_echof("build.date        %s", __DATE__);
-    __cli_echof("build.time        %s", __TIME__);
-    __cli_echof("open.version      %s", OPEN_VERSION);
-    __cli_echof("open.commit       %s", OPEN_COMMIT);
-    __cli_echof("platform.chip     %s", PLATFORM_CHIP);
-    __cli_echof("platform.board    %s", PLATFORM_BOARD);
-    __cli_echof("platform.commit   %s", PLATFORM_COMMIT);
+    cli_echof_("project.name      %s", PROJECT_NAME);
+    cli_echof_("project.version   %s", PROJECT_VERSION);
+    cli_echof_("build.date        %s", __DATE__);
+    cli_echof_("build.time        %s", __TIME__);
+    cli_echof_("open.version      %s", OPEN_VERSION);
+    cli_echof_("open.commit       %s", OPEN_COMMIT);
+    cli_echof_("platform.chip     %s", PLATFORM_CHIP);
+    cli_echof_("platform.board    %s", PLATFORM_BOARD);
+    cli_echof_("platform.commit   %s", PLATFORM_COMMIT);
 }
 
 /**
@@ -946,8 +947,8 @@ static void cmd_sys_tick(int argc, char *argv[])
     tick_count = tal_system_get_tick_count();
     uptime_ms  = tal_system_get_millisecond();
 
-    __cli_echof("tick.count       %llu", (unsigned long long)tick_count);
-    __cli_echof("uptime.ms        %llu", (unsigned long long)uptime_ms);
+    cli_echof_("tick.count       %llu", (unsigned long long)tick_count);
+    cli_echof_("uptime.ms        %llu", (unsigned long long)uptime_ms);
 }
 
 /**
@@ -964,20 +965,20 @@ static void cmd_sys_log_level(int argc, char *argv[])
     if (argc < 2) {
         rt = tal_log_get_level(&level);
         if (rt != OPRT_OK) {
-            __cli_echof("ERR: tal_log_get_level rt=%d", rt);
+            cli_echof_("ERR: tal_log_get_level rt=%d", rt);
             return;
         }
-        __cli_echof("log level: %s", __log_level_to_str(level));
+        cli_echof_("log level: %s", cli_log_level_to_str_(level));
         return;
     }
 
-    if (__parse_log_level(argv[1], &level) == false) {
+    if (cli_parse_log_level_(argv[1], &level) == false) {
         tal_cli_echo("Usage: sys_log_level [err|warn|notice|info|debug|trace]");
         return;
     }
 
     rt = tal_log_set_level(level);
-    __cli_echof("%s: sys_log_level rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: sys_log_level rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1010,7 +1011,7 @@ static void cmd_sys_iot_start(int argc, char *argv[])
     (void)argv;
 
     rt = tuya_iot_start(tuya_iot_client_get());
-    __cli_echof("%s: sys_iot_start rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: sys_iot_start rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1027,7 +1028,7 @@ static void cmd_sys_iot_stop(int argc, char *argv[])
     (void)argv;
 
     rt = tuya_iot_stop(tuya_iot_client_get());
-    __cli_echof("%s: sys_iot_stop rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: sys_iot_stop rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1045,12 +1046,12 @@ static void cmd_sys_iot_restart(int argc, char *argv[])
 
     rt = tuya_iot_stop(tuya_iot_client_get());
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: sys_iot_restart stop rt=%d", rt);
+        cli_echof_("ERR: sys_iot_restart stop rt=%d", rt);
         return;
     }
 
     rt = tuya_iot_start(tuya_iot_client_get());
-    __cli_echof("%s: sys_iot_restart rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: sys_iot_restart rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1067,7 +1068,7 @@ static void cmd_sys_iot_reset(int argc, char *argv[])
     (void)argv;
 
     rt = tuya_iot_reset(tuya_iot_client_get());
-    __cli_echof("%s: sys_iot_reset rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: sys_iot_reset rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1093,13 +1094,13 @@ static void cmd_sys_exec(int argc, char *argv[])
     char command[CLI_VALUE_SIZE] = {0};
     int  status;
 
-    if (__join_args(argc, argv, 1, command, sizeof(command)) == false) {
+    if (cli_join_args_(argc, argv, 1, command, sizeof(command)) == false) {
         tal_cli_echo("Usage: sys_exec <cmd...>");
         return;
     }
 
     status = system(command);
-    __cli_echof("sys_exec exit=%d", status);
+    cli_echof_("sys_exec exit=%d", status);
 #else
     (void)argc;
     (void)argv;
@@ -1121,15 +1122,12 @@ static void cmd_sys_switch(int argc, char *argv[])
     }
 
     if (strcmp(argv[1], "on") == 0) {
-        __report_switch_state(true);
+        cli_report_switch_state_(true);
     } else if (strcmp(argv[1], "off") == 0) {
-        __report_switch_state(false);
+        cli_report_switch_state_(false);
     } else {
         tal_cli_echo("Usage: sys_switch <on|off>");
     }
-    // const char *payload = "{\"1\": true, \"2\": 50, \"3\": 60}";
-    // OPERATE_RET rt      = tuya_iot_dp_report_json(tuya_iot_client_get(), payload);
-    // __cli_echof("%s: sys_switch rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1150,7 +1148,7 @@ static void cmd_sys_uptime(int argc, char *argv[])
     min  = (sec % 3600) / 60;
     sec  = sec % 60;
 
-    __cli_echof("uptime: %ud %uh %um %us (%u ms)", day, hour, min, sec, (unsigned)ms);
+    cli_echof_("uptime: %ud %uh %um %us (%u ms)", day, hour, min, sec, (unsigned)ms);
 }
 
 /**
@@ -1169,7 +1167,7 @@ static void cmd_sys_random(int argc, char *argv[])
     }
 
     val = tal_system_get_random(range);
-    __cli_echof("random(%u) = %d", range, val);
+    cli_echof_("random(%u) = %d", range, val);
 }
 
 /**
@@ -1180,7 +1178,7 @@ static void cmd_sys_timer_count(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    __cli_echof("active sw timers: %d", tal_sw_timer_get_num());
+    cli_echof_("active sw timers: %d", tal_sw_timer_get_num());
 }
 
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
@@ -1196,7 +1194,7 @@ static void cmd_sys_wifi_info(int argc, char *argv[])
     (void)argv;
 
     tal_cli_echo("--- WiFi info ---");
-    __print_wifi_info();
+    cli_print_wifi_info_();
 }
 
 /**
@@ -1216,13 +1214,13 @@ static void cmd_sys_wifi_scan(int argc, char *argv[])
 
     rt = tal_wifi_all_ap_scan(&ap_list, &ap_num);
     if (rt != OPRT_OK || ap_list == NULL) {
-        __cli_echof("ERR: tal_wifi_all_ap_scan rt=%d", rt);
+        cli_echof_("ERR: tal_wifi_all_ap_scan rt=%d", rt);
         return;
     }
 
-    __cli_echof("Found %u APs:", (unsigned)ap_num);
+    cli_echof_("Found %u APs:", (unsigned)ap_num);
     for (uint32_t i = 0; i < ap_num; i++) {
-        __cli_echof("  [%2u] %-32s  ch:%2d  rssi:%d  sec:%d",
+        cli_echof_("  [%2u] %-32s  ch:%2d  rssi:%d  sec:%d",
                      i + 1, ap_list[i].ssid, ap_list[i].channel,
                      ap_list[i].rssi, ap_list[i].s_len);
     }
@@ -1249,11 +1247,11 @@ static void cmd_fs_ls(int argc, char *argv[])
 
     rt = claw_dir_open(path, &dir);
     if (rt != OPRT_OK || dir == NULL) {
-        __cli_echof("ERR: claw_dir_open('%s') rt=%d", path, rt);
+        cli_echof_("ERR: claw_dir_open('%s') rt=%d", path, rt);
         return;
     }
 
-    __cli_echof("Listing: %s", path);
+    cli_echof_("Listing: %s", path);
     while (1) {
         TUYA_FILEINFO info = NULL;
         const char   *name = NULL;
@@ -1267,7 +1265,7 @@ static void cmd_fs_ls(int argc, char *argv[])
             break;
         }
         if (rt != OPRT_OK || info == NULL) {
-            __cli_echof("ERR: claw_dir_read rt=%d", rt);
+            cli_echof_("ERR: claw_dir_read rt=%d", rt);
             break;
         }
 
@@ -1281,15 +1279,15 @@ static void cmd_fs_ls(int argc, char *argv[])
 
         (void)claw_dir_is_directory(info, &is_dir);
         (void)claw_dir_is_regular(info, &is_reg);
-        __fs_join_path(path, name, full_path, sizeof(full_path));
+        cli_fs_join_path_(path, name, full_path, sizeof(full_path));
         size = is_reg ? claw_fgetsize(full_path) : -1;
 
         if (is_dir) {
-            __cli_echof("  <dir>  %s/", name);
+            cli_echof_("  <dir>  %s/", name);
         } else if (is_reg) {
-            __cli_echof("  %6d  %s", size, name);
+            cli_echof_("  %6d  %s", size, name);
         } else {
-            __cli_echof("  <unk>  %s", name);
+            cli_echof_("  <unk>  %s", name);
         }
 
         count++;
@@ -1299,7 +1297,7 @@ static void cmd_fs_ls(int argc, char *argv[])
     }
 
     (void)claw_dir_close(dir);
-    __cli_echof("Done. entries=%u", (unsigned)count);
+    cli_echof_("Done. entries=%u", (unsigned)count);
 }
 
 /**
@@ -1325,12 +1323,12 @@ static void cmd_fs_stat(int argc, char *argv[])
 
     rt = claw_fs_is_exist(argv[1], &exists);
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: claw_fs_is_exist('%s') rt=%d", argv[1], rt);
+        cli_echof_("ERR: claw_fs_is_exist('%s') rt=%d", argv[1], rt);
         return;
     }
 
     if (exists == FALSE) {
-        __cli_echof("NOT FOUND: %s", argv[1]);
+        cli_echof_("NOT FOUND: %s", argv[1]);
         return;
     }
 
@@ -1342,15 +1340,15 @@ static void cmd_fs_stat(int argc, char *argv[])
     size    = claw_fgetsize(argv[1]);
     mode_rt = claw_fs_mode(argv[1], &mode);
 
-    __cli_echof("path: %s", argv[1]);
-    __cli_echof("type: %s", is_dir ? "dir" : "file");
+    cli_echof_("path: %s", argv[1]);
+    cli_echof_("type: %s", is_dir ? "dir" : "file");
     if (!is_dir && size >= 0) {
-        __cli_echof("size: %d", size);
+        cli_echof_("size: %d", size);
     }
     if (mode_rt == OPRT_OK) {
-        __cli_echof("mode: 0x%08x", mode);
+        cli_echof_("mode: 0x%08x", mode);
     } else {
-        __cli_echof("mode: (n/a) rt=%d", mode_rt);
+        cli_echof_("mode: (n/a) rt=%d", mode_rt);
     }
 }
 
@@ -1382,11 +1380,11 @@ static void cmd_fs_cat(int argc, char *argv[])
 
     file = claw_fopen(path, "r");
     if (file == NULL) {
-        __cli_echof("ERR: claw_fopen('%s') failed", path);
+        cli_echof_("ERR: claw_fopen('%s') failed", path);
         return;
     }
 
-    __cli_echof("=== %s ===", path);
+    cli_echof_("=== %s ===", path);
     while (total < max_bytes) {
         char *line = claw_fgets(buf, (int)sizeof(buf), file);
         int   len;
@@ -1412,7 +1410,7 @@ static void cmd_fs_cat(int argc, char *argv[])
     }
 
     if (claw_feof(file) != 1 && total >= max_bytes) {
-        __cli_echof("[truncated] %ld bytes", total);
+        cli_echof_("[truncated] %ld bytes", total);
     }
 
     tal_cli_echo("=============");
@@ -1447,7 +1445,7 @@ static void cmd_fs_hexdump(int argc, char *argv[])
 
     file = claw_fopen(path, "r");
     if (file == NULL) {
-        __cli_echof("ERR: claw_fopen('%s') failed", path);
+        cli_echof_("ERR: claw_fopen('%s') failed", path);
         return;
     }
 
@@ -1488,7 +1486,7 @@ static void cmd_fs_hexdump(int argc, char *argv[])
     }
 
     if (offset >= max_bytes) {
-        __cli_echof("[truncated] %ld bytes", offset);
+        cli_echof_("[truncated] %ld bytes", offset);
     }
 
     (void)claw_fclose(file);
@@ -1502,7 +1500,7 @@ static void cmd_fs_hexdump(int argc, char *argv[])
  */
 static void cmd_fs_write(int argc, char *argv[])
 {
-    __fs_write_impl((argc >= 2) ? argv[1] : "", "w", argc, argv);
+    cli_fs_write_impl_((argc >= 2) ? argv[1] : "", "w", argc, argv);
 }
 
 /**
@@ -1513,7 +1511,7 @@ static void cmd_fs_write(int argc, char *argv[])
  */
 static void cmd_fs_append(int argc, char *argv[])
 {
-    __fs_write_impl((argc >= 2) ? argv[1] : "", "a", argc, argv);
+    cli_fs_write_impl_((argc >= 2) ? argv[1] : "", "a", argc, argv);
 }
 
 /**
@@ -1532,7 +1530,7 @@ static void cmd_fs_rm(int argc, char *argv[])
     }
 
     rt = claw_fs_remove(argv[1]);
-    __cli_echof("%s: fs_rm rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: fs_rm rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1551,7 +1549,7 @@ static void cmd_fs_mkdir(int argc, char *argv[])
     }
 
     rt = claw_fs_mkdir(argv[1]);
-    __cli_echof("%s: fs_mkdir rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: fs_mkdir rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1570,7 +1568,7 @@ static void cmd_fs_mv(int argc, char *argv[])
     }
 
     rt = claw_fs_rename(argv[1], argv[2]);
-    __cli_echof("%s: fs_mv rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: fs_mv rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1595,19 +1593,19 @@ static void cmd_kv_get(int argc, char *argv[])
 
     rt = tal_kv_get(argv[1], &value, &length);
     if (rt != OPRT_OK || value == NULL) {
-        __cli_echof("ERR: kv_get '%s' rt=%d", argv[1], rt);
+        cli_echof_("ERR: kv_get '%s' rt=%d", argv[1], rt);
         if (value != NULL) {
             tal_kv_free(value);
         }
         return;
     }
 
-    __cli_echof("key: %s", argv[1]);
-    __cli_echof("len: %u", (unsigned)length);
-    if (__kv_value_is_text(value, length)) {
-        __cli_echof("value: %s", (char *)value);
+    cli_echof_("key: %s", argv[1]);
+    cli_echof_("len: %u", (unsigned)length);
+    if (cli_kv_value_is_text_(value, length)) {
+        cli_echof_("value: %s", (char *)value);
     } else {
-        __print_kv_binary_preview(value, length);
+        cli_print_kv_binary_preview_(value, length);
     }
 
     tal_kv_free(value);
@@ -1629,9 +1627,9 @@ static void cmd_kv_set(int argc, char *argv[])
         return;
     }
 
-    (void)__join_args(argc, argv, 2, value, sizeof(value));
+    (void)cli_join_args_(argc, argv, 2, value, sizeof(value));
     rt = tal_kv_set(argv[1], (const uint8_t *)value, strlen(value) + 1);
-    __cli_echof("%s: kv_set rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: kv_set rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1650,7 +1648,7 @@ static void cmd_kv_del(int argc, char *argv[])
     }
 
     rt = tal_kv_del(argv[1]);
-    __cli_echof("%s: kv_del rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
+    cli_echof_("%s: kv_del rt=%d", (rt == OPRT_OK) ? "OK" : "ERR", rt);
 }
 
 /**
@@ -1661,7 +1659,10 @@ static void cmd_kv_del(int argc, char *argv[])
  */
 static void cmd_kv_list(int argc, char *argv[])
 {
-    char *list_argv[] = {"kv", "list", "/"};
+    static char kv_arg0[] = "kv";
+    static char kv_arg1[] = "list";
+    static char kv_arg2[] = "/";
+    char *list_argv[] = {kv_arg0, kv_arg1, kv_arg2};
 
     (void)argc;
     (void)argv;
@@ -1692,7 +1693,7 @@ static void cmd_cfg_show(int argc, char *argv[])
 
     tal_cli_echo("--- Effective config ---");
     tal_cli_echo("[Application]");
-    __print_app_cfg_item("product_id", APP_KV_PRODUCT_ID, TUYA_PRODUCT_ID, true);
+    cli_print_app_cfg_item_("product_id", APP_KV_PRODUCT_ID, TUYA_PRODUCT_ID, true);
     if (tuya_authorize_read(&license) == OPRT_OK) {
         if (license.uuid != NULL && license.uuid[0] != '\0') {
             uuid_value  = license.uuid;
@@ -1711,27 +1712,27 @@ static void cmd_cfg_show(int argc, char *argv[])
         authkey_value  = TUYA_OPENSDK_AUTHKEY;
         authkey_source = "build";
     }
-    __print_cfg_value_item("uuid", uuid_value, uuid_source, true);
-    __print_cfg_value_item("authkey", authkey_value, authkey_source, true);
-    __print_app_cfg_item("ws_token", APP_KV_WS_TOKEN, CLAW_WS_AUTH_TOKEN, true);
-    __print_app_cfg_item("gw_host", APP_KV_GW_HOST, OPENCLAW_GATEWAY_HOST, true);
+    cli_print_cfg_value_item_("uuid", uuid_value, uuid_source, true);
+    cli_print_cfg_value_item_("authkey", authkey_value, authkey_source, true);
+    cli_print_app_cfg_item_("ws_token", APP_KV_WS_TOKEN, CLAW_WS_AUTH_TOKEN, true);
+    cli_print_app_cfg_item_("gw_host", APP_KV_GW_HOST, OPENCLAW_GATEWAY_HOST, true);
     snprintf(port_text, sizeof(port_text), "%u", (unsigned)OPENCLAW_GATEWAY_PORT);
-    __print_app_cfg_item("gw_port", APP_KV_GW_PORT, port_text, false);
-    __print_app_cfg_item("gw_token", APP_KV_GW_TOKEN, OPENCLAW_GATEWAY_TOKEN, true);
-    __print_app_cfg_item("device_id", APP_KV_DEVICE_ID, DUCKYCLAW_DEVICE_ID, true);
+    cli_print_app_cfg_item_("gw_port", APP_KV_GW_PORT, port_text, false);
+    cli_print_app_cfg_item_("gw_token", APP_KV_GW_TOKEN, OPENCLAW_GATEWAY_TOKEN, true);
+    cli_print_app_cfg_item_("device_id", APP_KV_DEVICE_ID, DUCKYCLAW_DEVICE_ID, true);
 
     tal_cli_echo("[IM]");
-    __print_im_cfg_item("channel_mode", IM_NVS_BOT, IM_NVS_KEY_CHANNEL_MODE, IM_SECRET_CHANNEL_MODE, false);
-    __print_im_cfg_item("tg.token", IM_NVS_TG, IM_NVS_KEY_TG_TOKEN, IM_SECRET_TG_TOKEN, true);
-    __print_im_cfg_item("dc.token", IM_NVS_DC, IM_NVS_KEY_DC_TOKEN, IM_SECRET_DC_TOKEN, true);
-    __print_im_cfg_item("dc.channel_id", IM_NVS_DC, IM_NVS_KEY_DC_CHANNEL_ID, IM_SECRET_DC_CHANNEL_ID, true);
-    __print_im_cfg_item("fs.app_id", IM_NVS_FS, IM_NVS_KEY_FS_APP_ID, IM_SECRET_FS_APP_ID, true);
-    __print_im_cfg_item("fs.app_secret", IM_NVS_FS, IM_NVS_KEY_FS_APP_SECRET, IM_SECRET_FS_APP_SECRET, true);
-    __print_im_cfg_item("fs.allow_from", IM_NVS_FS, IM_NVS_KEY_FS_ALLOW_FROM, IM_SECRET_FS_ALLOW_FROM, true);
-    __print_im_cfg_item("proxy.host", IM_NVS_PROXY, IM_NVS_KEY_PROXY_HOST, IM_SECRET_PROXY_HOST, true);
-    __print_im_cfg_item("proxy.port", IM_NVS_PROXY, IM_NVS_KEY_PROXY_PORT, IM_SECRET_PROXY_PORT, false);
-    __print_im_cfg_item("proxy.type", IM_NVS_PROXY, IM_NVS_KEY_PROXY_TYPE, IM_SECRET_PROXY_TYPE, false);
-    __cli_echof("  %-18s %s", "proxy.enabled", __bool_to_str(http_proxy_is_enabled()));
+    cli_print_im_cfg_item_("channel_mode", IM_NVS_BOT, IM_NVS_KEY_CHANNEL_MODE, IM_SECRET_CHANNEL_MODE, false);
+    cli_print_im_cfg_item_("tg.token", IM_NVS_TG, IM_NVS_KEY_TG_TOKEN, IM_SECRET_TG_TOKEN, true);
+    cli_print_im_cfg_item_("dc.token", IM_NVS_DC, IM_NVS_KEY_DC_TOKEN, IM_SECRET_DC_TOKEN, true);
+    cli_print_im_cfg_item_("dc.channel_id", IM_NVS_DC, IM_NVS_KEY_DC_CHANNEL_ID, IM_SECRET_DC_CHANNEL_ID, true);
+    cli_print_im_cfg_item_("fs.app_id", IM_NVS_FS, IM_NVS_KEY_FS_APP_ID, IM_SECRET_FS_APP_ID, true);
+    cli_print_im_cfg_item_("fs.app_secret", IM_NVS_FS, IM_NVS_KEY_FS_APP_SECRET, IM_SECRET_FS_APP_SECRET, true);
+    cli_print_im_cfg_item_("fs.allow_from", IM_NVS_FS, IM_NVS_KEY_FS_ALLOW_FROM, IM_SECRET_FS_ALLOW_FROM, true);
+    cli_print_im_cfg_item_("proxy.host", IM_NVS_PROXY, IM_NVS_KEY_PROXY_HOST, IM_SECRET_PROXY_HOST, true);
+    cli_print_im_cfg_item_("proxy.port", IM_NVS_PROXY, IM_NVS_KEY_PROXY_PORT, IM_SECRET_PROXY_PORT, false);
+    cli_print_im_cfg_item_("proxy.type", IM_NVS_PROXY, IM_NVS_KEY_PROXY_TYPE, IM_SECRET_PROXY_TYPE, false);
+    cli_echof_("  %-18s %s", "proxy.enabled", cli_bool_to_str_(http_proxy_is_enabled()));
 
     tal_cli_echo("Note: cfg_* changes take effect after reconnect or reboot.");
 }
@@ -1749,11 +1750,11 @@ static void cmd_cfg_reset(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    __clear_app_cfg_overrides();
-    __clear_im_cfg_overrides();
+    cli_clear_app_cfg_overrides_();
+    cli_clear_im_cfg_overrides_();
     auth_rt = tuya_authorize_reset();
     if (auth_rt != OPRT_OK) {
-        __cli_echof("ERR: cfg_reset authorize rt=%d", auth_rt);
+        cli_echof_("ERR: cfg_reset authorize rt=%d", auth_rt);
         return;
     }
     tal_cli_echo("OK: cleared all config KV overrides (fallback to build defaults).");
@@ -1767,7 +1768,7 @@ static void cmd_cfg_reset(int argc, char *argv[])
  */
 static void cmd_cfg_set_product_id(int argc, char *argv[])
 {
-    __set_app_cfg_value(argc, argv, "cfg_set_product_id <id>", APP_KV_PRODUCT_ID, "cfg_set_product_id");
+    cli_set_app_cfg_value_(argc, argv, "cfg_set_product_id <id>", APP_KV_PRODUCT_ID, "cfg_set_product_id");
 }
 
 /**
@@ -1778,7 +1779,7 @@ static void cmd_cfg_set_product_id(int argc, char *argv[])
  */
 static void cmd_cfg_set_auth(int argc, char *argv[])
 {
-    __set_authorize_pair(argc, argv, "cfg_set_auth <uuid> <authkey>");
+    cli_set_authorize_pair_(argc, argv, "cfg_set_auth <uuid> <authkey>");
 }
 
 /**
@@ -1789,7 +1790,7 @@ static void cmd_cfg_set_auth(int argc, char *argv[])
  */
 static void cmd_cfg_set_ws_token(int argc, char *argv[])
 {
-    __set_app_cfg_value(argc, argv, "cfg_set_ws_token <token>", APP_KV_WS_TOKEN, "cfg_set_ws_token");
+    cli_set_app_cfg_value_(argc, argv, "cfg_set_ws_token <token>", APP_KV_WS_TOKEN, "cfg_set_ws_token");
 }
 
 /**
@@ -1800,7 +1801,7 @@ static void cmd_cfg_set_ws_token(int argc, char *argv[])
  */
 static void cmd_cfg_set_gw_host(int argc, char *argv[])
 {
-    __set_app_cfg_value(argc, argv, "cfg_set_gw_host <host>", APP_KV_GW_HOST, "cfg_set_gw_host");
+    cli_set_app_cfg_value_(argc, argv, "cfg_set_gw_host <host>", APP_KV_GW_HOST, "cfg_set_gw_host");
 }
 
 /**
@@ -1824,7 +1825,7 @@ static void cmd_cfg_set_gw_port(int argc, char *argv[])
         return;
     }
 
-    __set_app_cfg_value(argc, argv, "cfg_set_gw_port <port>", APP_KV_GW_PORT, "cfg_set_gw_port");
+    cli_set_app_cfg_value_(argc, argv, "cfg_set_gw_port <port>", APP_KV_GW_PORT, "cfg_set_gw_port");
 }
 
 /**
@@ -1835,7 +1836,7 @@ static void cmd_cfg_set_gw_port(int argc, char *argv[])
  */
 static void cmd_cfg_set_gw_token(int argc, char *argv[])
 {
-    __set_app_cfg_value(argc, argv, "cfg_set_gw_token <token>", APP_KV_GW_TOKEN, "cfg_set_gw_token");
+    cli_set_app_cfg_value_(argc, argv, "cfg_set_gw_token <token>", APP_KV_GW_TOKEN, "cfg_set_gw_token");
 }
 
 /**
@@ -1846,7 +1847,7 @@ static void cmd_cfg_set_gw_token(int argc, char *argv[])
  */
 static void cmd_cfg_set_device_id(int argc, char *argv[])
 {
-    __set_app_cfg_value(argc, argv, "cfg_set_device_id <id>", APP_KV_DEVICE_ID, "cfg_set_device_id");
+    cli_set_app_cfg_value_(argc, argv, "cfg_set_device_id <id>", APP_KV_DEVICE_ID, "cfg_set_device_id");
 }
 
 /**
@@ -1876,11 +1877,11 @@ static void cmd_cfg_set_channel_mode(int argc, char *argv[])
 
     rt = im_kv_set_string(IM_NVS_BOT, IM_NVS_KEY_CHANNEL_MODE, mode);
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: cfg_set_channel_mode rt=%d", rt);
+        cli_echof_("ERR: cfg_set_channel_mode rt=%d", rt);
         return;
     }
 
-    __cli_echof("OK: channel_mode=%s (reconnect/reboot to take effect)", mode);
+    cli_echof_("OK: channel_mode=%s (reconnect/reboot to take effect)", mode);
 }
 
 /**
@@ -1891,7 +1892,7 @@ static void cmd_cfg_set_channel_mode(int argc, char *argv[])
  */
 static void cmd_cfg_set_tg_token(int argc, char *argv[])
 {
-    __set_im_cfg_value(argc, argv, "cfg_set_tg_token <token>", "telegram token", telegram_set_token);
+    cli_set_im_cfg_value_(argc, argv, "cfg_set_tg_token <token>", "telegram token", telegram_set_token);
 }
 
 /**
@@ -1902,7 +1903,7 @@ static void cmd_cfg_set_tg_token(int argc, char *argv[])
  */
 static void cmd_cfg_set_dc_token(int argc, char *argv[])
 {
-    __set_im_cfg_value(argc, argv, "cfg_set_dc_token <token>", "discord token", discord_set_token);
+    cli_set_im_cfg_value_(argc, argv, "cfg_set_dc_token <token>", "discord token", discord_set_token);
 }
 
 /**
@@ -1913,7 +1914,7 @@ static void cmd_cfg_set_dc_token(int argc, char *argv[])
  */
 static void cmd_cfg_set_dc_channel(int argc, char *argv[])
 {
-    __set_im_cfg_value(argc, argv, "cfg_set_dc_channel <channel_id>", "discord channel_id", discord_set_channel_id);
+    cli_set_im_cfg_value_(argc, argv, "cfg_set_dc_channel <channel_id>", "discord channel_id", discord_set_channel_id);
 }
 
 /**
@@ -1924,7 +1925,7 @@ static void cmd_cfg_set_dc_channel(int argc, char *argv[])
  */
 static void cmd_cfg_set_fs_appid(int argc, char *argv[])
 {
-    __set_im_cfg_value(argc, argv, "cfg_set_fs_appid <app_id>", "feishu app_id", feishu_set_app_id);
+    cli_set_im_cfg_value_(argc, argv, "cfg_set_fs_appid <app_id>", "feishu app_id", feishu_set_app_id);
 }
 
 /**
@@ -1935,7 +1936,7 @@ static void cmd_cfg_set_fs_appid(int argc, char *argv[])
  */
 static void cmd_cfg_set_fs_appsecret(int argc, char *argv[])
 {
-    __set_im_cfg_value(argc, argv, "cfg_set_fs_appsecret <app_secret>", "feishu app_secret", feishu_set_app_secret);
+    cli_set_im_cfg_value_(argc, argv, "cfg_set_fs_appsecret <app_secret>", "feishu app_secret", feishu_set_app_secret);
 }
 
 /**
@@ -1946,7 +1947,7 @@ static void cmd_cfg_set_fs_appsecret(int argc, char *argv[])
  */
 static void cmd_cfg_set_fs_allow(int argc, char *argv[])
 {
-    __set_im_cfg_value(argc, argv, "cfg_set_fs_allow <csv_allow_from>", "feishu allow_from", feishu_set_allow_from);
+    cli_set_im_cfg_value_(argc, argv, "cfg_set_fs_allow <csv_allow_from>", "feishu allow_from", feishu_set_allow_from);
 }
 
 /**
@@ -1975,11 +1976,11 @@ static void cmd_cfg_set_proxy(int argc, char *argv[])
     type = (argc >= 4) ? argv[3] : IM_SECRET_PROXY_TYPE;
     rt   = http_proxy_set(argv[1], (uint16_t)port, type);
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: cfg_set_proxy rt=%d", rt);
+        cli_echof_("ERR: cfg_set_proxy rt=%d", rt);
         return;
     }
 
-    __cli_echof("OK: proxy=%s:%ld type=%s", argv[1], port, type);
+    cli_echof_("OK: proxy=%s:%ld type=%s", argv[1], port, type);
 }
 
 /**
@@ -1997,7 +1998,7 @@ static void cmd_cfg_clear_proxy(int argc, char *argv[])
 
     rt = http_proxy_clear();
     if (rt != OPRT_OK) {
-        __cli_echof("ERR: cfg_clear_proxy rt=%d", rt);
+        cli_echof_("ERR: cfg_clear_proxy rt=%d", rt);
         return;
     }
 
@@ -2027,8 +2028,10 @@ static cli_cmd_t s_cli_cmd[] = {
     {.name = "sys_netmgr",            .help = "Pass through to netmgr CLI",             .func = cmd_sys_netmgr},
     {.name = "sys_exec",              .help = "Execute shell command on Linux",         .func = cmd_sys_exec},
     {.name = "sys_switch",            .help = "Report demo switch datapoint",           .func = cmd_sys_switch},
+#if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
     {.name = "sys_wifi_info",         .help = "Show current WiFi SSID/BSSID/RSSI",      .func = cmd_sys_wifi_info},
     {.name = "sys_wifi_scan",         .help = "Scan nearby WiFi APs",                   .func = cmd_sys_wifi_scan},
+#endif
 
     {.name = "fs_ls",                 .help = "List directory",                         .func = cmd_fs_ls},
     {.name = "fs_stat",               .help = "Show file or directory metadata",        .func = cmd_fs_stat},
