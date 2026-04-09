@@ -1340,8 +1340,8 @@ static OPERATE_RET __connect_and_handshake(void)
 
     OPERATE_RET rt = tal_net_connect(fd, ip_addr, (uint16_t)s_gw_port);
     if (rt != OPRT_OK) {
-        // PR_ERR("acp tcp connect failed rt=%d host=%s port=%u",
-        //        rt, s_gw_host, s_gw_port);
+        PR_DEBUG("acp tcp connect failed rt=%d host=%s port=%u",
+               rt, s_gw_host, s_gw_port);
         tal_net_close(fd);
         return rt;
     }
@@ -1425,7 +1425,7 @@ static void acp_client_task(void *arg)
         if (s_ctx.state == ACP_STATE_DISCONNECTED) {
             OPERATE_RET rt = __connect_and_handshake();
             if (rt != OPRT_OK) {
-                // PR_WARN("acp connect failed, retry in %dms", ACP_CLIENT_RECONNECT_MS);
+                PR_DEBUG("acp connect failed, retry in %dms", ACP_CLIENT_RECONNECT_MS);
                 tal_system_sleep(ACP_CLIENT_RECONNECT_MS);
                 continue;
             }
