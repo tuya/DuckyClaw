@@ -53,23 +53,17 @@ static const char *__app_im_map_channel(const char *channel)
     }
     if (strcmp(channel, IM_CHAN_TELEGRAM) == 0) {
         return IM_CHAN_TELEGRAM;
-    }
-    if (strcmp(channel, IM_CHAN_DISCORD) == 0) {
+    } else if (strcmp(channel, IM_CHAN_DISCORD) == 0) {
         return IM_CHAN_DISCORD;
-    }
-    if (strcmp(channel, IM_CHAN_FEISHU) == 0) {
+    } else if (strcmp(channel, IM_CHAN_FEISHU) == 0) {
         return IM_CHAN_FEISHU;
-    }
-    if (strcmp(channel, IM_CHAN_WEIXIN) == 0) {
+    } else if (strcmp(channel, IM_CHAN_WEIXIN) == 0) {
         return IM_CHAN_WEIXIN;
-    }
-    if (strcmp(channel, IM_CHAN_WS) == 0) {
+    } else if (strcmp(channel, IM_CHAN_WS) == 0) {
         return IM_CHAN_WS;
-    }
-    if (strcmp(channel, "system") == 0 || strcmp(channel, "cron") == 0) {
+    } else {
         return s_channel;
     }
-    return NULL;
 }
 
 static BOOL_T __app_im_ws_token_valid(void)

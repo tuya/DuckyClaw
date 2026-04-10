@@ -64,7 +64,7 @@
 /* Buffer size for a single tool result string.
  * Must be large enough to hold the full cron_list / read_file output.
  * 2 KB covers ~10 cron jobs with full field text. */
-#define TOOL_RESULT_BUF_SIZE  (2048)
+#define TOOL_RESULT_BUF_SIZE  (512)
 
 /* Buffer holding the last complete AI text stream, set by
  * agent_loop_set_last_response() called from ducky_claw_chat.c on STREAM_STOP.

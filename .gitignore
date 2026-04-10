@@ -4,6 +4,7 @@ dist
 .cache
 .cursor
 .claude
+ai_components/assets/include/lang_config.h
 compile_commands.json
 tuya_app_config_secrets.h
 
