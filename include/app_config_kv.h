@@ -25,8 +25,8 @@ extern "C" {
 /* ---- KV key definitions ---- */
 
 #define APP_KV_PRODUCT_ID   "app.product_id"
-#define APP_KV_UUID         "app.uuid"
-#define APP_KV_AUTHKEY      "app.authkey"
+#define APP_KV_UUID         "UUID_TUYAOPEN"
+#define APP_KV_AUTHKEY      "AUTHKEY_TUYAOPEN"
 #define APP_KV_WS_TOKEN     "ws_auth_token"   /* reuse existing ws_server key */
 #define APP_KV_GW_HOST      "app.gw_host"
 #define APP_KV_GW_PORT      "app.gw_port"
@@ -78,16 +78,6 @@ static inline OPERATE_RET app_kv_del(const char *kv_key)
 static inline void app_cfg_get_product_id(char *out, size_t out_size)
 {
     app_kv_get_string(APP_KV_PRODUCT_ID, TUYA_PRODUCT_ID, out, out_size);
-}
-
-static inline void app_cfg_get_uuid(char *out, size_t out_size)
-{
-    app_kv_get_string(APP_KV_UUID, TUYA_OPENSDK_UUID, out, out_size);
-}
-
-static inline void app_cfg_get_authkey(char *out, size_t out_size)
-{
-    app_kv_get_string(APP_KV_AUTHKEY, TUYA_OPENSDK_AUTHKEY, out, out_size);
 }
 
 static inline void app_cfg_get_ws_token(char *out, size_t out_size)

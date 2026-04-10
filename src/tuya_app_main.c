@@ -348,12 +348,8 @@ void user_main(void)
     reset_netconfig_start();
 
     if (OPRT_OK != tuya_authorize_read(&license)) {
-        static char kv_uuid[64]    = {0};
-        static char kv_authkey[64] = {0};
-        app_cfg_get_uuid(kv_uuid, sizeof(kv_uuid));
-        app_cfg_get_authkey(kv_authkey, sizeof(kv_authkey));
-        license.uuid    = kv_uuid;
-        license.authkey = kv_authkey;
+        license.uuid    = TUYA_OPENSDK_UUID;
+        license.authkey = TUYA_OPENSDK_AUTHKEY;
         PR_WARN("Replace the TUYA_OPENSDK_UUID and TUYA_OPENSDK_AUTHKEY contents, otherwise the demo cannot work.\n \
                 Visit https://platform.tuya.com/purchase/index?type=6 to get the open-sdk uuid and authkey.");
     }
