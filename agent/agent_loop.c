@@ -14,7 +14,6 @@
  *        (tool result already recorded in history by __on_tool_executed)
  *     5. If no tool called → final response, forward to IM, break
  *
- *
  * @version 0.4
  * @copyright Copyright (c) 2021-2026 Tuya Inc. All Rights Reserved.
  */
@@ -89,8 +88,9 @@ static const char *__json_get_string(const cJSON *item)
  */
 typedef struct {
     SEM_HANDLE   sem;           /* Posted when cloud AI finishes one round  */
-    MUTEX_HANDLE lock;          /* Guards tool_call_success / tool_result         */
-    bool         tool_call_success;   /* Set by __on_tool_executed                */
+    MUTEX_HANDLE lock;          /* Guards tool_called / tool_result         */
+    bool         tool_called;   /* True if __on_tool_executed fired         */
+    bool         tool_call_ok;  /* True if the tool returned OPRT_OK       */
     char         tool_result[TOOL_RESULT_BUF_SIZE]; /* Last tool summary    */
 } turn_state_t;
 
@@ -220,7 +220,8 @@ static void __on_tool_executed(const char *tool_name, OPERATE_RET rt,
     /* Signal the inner loop that a tool was called this round */
     if (s_turn.lock) {
         tal_mutex_lock(s_turn.lock);
-        s_turn.tool_call_success = rt == OPRT_OK ? true : false;
+        s_turn.tool_called = true;
+        s_turn.tool_call_ok = (rt == OPRT_OK);
         strncpy(s_turn.tool_result, buf, TOOL_RESULT_BUF_SIZE - 1);
         s_turn.tool_result[TOOL_RESULT_BUF_SIZE - 1] = '\0';
         tal_mutex_unlock(s_turn.lock);
@@ -383,7 +384,7 @@ static void __build_and_send(const char *content, bool is_tool, bool summarize)
  *
  * Mirrors mimiclaw's agent_loop_task structure:
  *   outer: pop inbound message
- *   inner: send → wait → check tool_call_success → repeat or finish
+ *   inner: send → wait → check tool_called → repeat or finish
  */
 static void agent_loop_task(void *arg)
 {
@@ -455,7 +456,8 @@ static void agent_loop_task(void *arg)
             /* Reset per-round tool state */
             if (s_turn.lock) {
                 tal_mutex_lock(s_turn.lock);
-                s_turn.tool_call_success = false;
+                s_turn.tool_called = false;
+                s_turn.tool_call_ok = false;
                 s_turn.tool_result[0] = '\0';
                 tal_mutex_unlock(s_turn.lock);
             }
@@ -484,18 +486,21 @@ static void agent_loop_task(void *arg)
 
             /* Check whether a tool was called this round */
             bool called = false;
+            bool call_ok = false;
             char result_copy[TOOL_RESULT_BUF_SIZE];
             if (s_turn.lock) {
                 tal_mutex_lock(s_turn.lock);
-                called = s_turn.tool_call_success;
+                called = s_turn.tool_called;
+                call_ok = s_turn.tool_call_ok;
                 strncpy(result_copy, s_turn.tool_result, TOOL_RESULT_BUF_SIZE - 1);
                 result_copy[TOOL_RESULT_BUF_SIZE - 1] = '\0';
                 tal_mutex_unlock(s_turn.lock);
             }
 
-            PR_INFO("LLM iteration=%d tool_call_success=%d is_last=%d", iteration + 1, called, is_last);
+            PR_INFO("LLM iteration=%d tool_called=%d tool_ok=%d is_last=%d",
+                    iteration + 1, called, call_ok, is_last);
 
-            if (called || is_last) {
+            if (!called || is_last || call_ok) {
                 if (s_last_response && s_last_response_lock) {
                     tal_mutex_lock(s_last_response_lock);
                     if (s_last_response[0] != '\0') {

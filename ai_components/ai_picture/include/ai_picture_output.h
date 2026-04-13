@@ -62,7 +62,7 @@ OPERATE_RET ai_picture_output_init(AI_PICTURE_OUTPUT_CFG_T *cfg);
  * @param url Pointer to the picture URL string.
  * @return OPERATE_RET Operation result code.
  */
-OPERATE_RET ai_picture_output_start(char *url);
+OPERATE_RET ai_picture_output_start(const char *url);
 
 /**
  * @brief Stop picture output and cleanup resources.
