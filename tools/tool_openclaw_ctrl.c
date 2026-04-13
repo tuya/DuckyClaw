@@ -320,10 +320,10 @@ static OPERATE_RET __tool_openclaw_ctrl(const MCP_PROPERTY_LIST_T *properties,
             return OPRT_OK;
         }
 
-        PR_WARN("[openclaw_ctrl] ACP send failed (rt=%d), falling back to Feishu", rt);
+        PR_WARN("[openclaw_ctrl] ACP send failed (rt=%d)", rt);
         return rt;
     } else {
-        PR_INFO("[openclaw_ctrl] ACP not connected, using Feishu fallback");
+        PR_ERR("[openclaw_ctrl] ACP not connected");
     }
 
     /* -----------------------------------------------------------------------

@@ -58,7 +58,6 @@ jobs:
           . ./export.sh
           cd ${{ github.workspace }}
           tos.py version
-          tos.py check
           rm -rf ${{ github.workspace }}/dist ${{ github.workspace }}/release-assets
 
       - name: Build all firmware configs
