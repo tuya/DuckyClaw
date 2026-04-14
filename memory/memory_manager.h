@@ -14,6 +14,7 @@
 #define __MEMORY_MANAGER_H__
 
 #include "tuya_cloud_types.h"
+#include "app_base_config.h"
 #include <stddef.h>
 
 #ifdef __cplusplus

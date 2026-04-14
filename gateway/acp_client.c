@@ -31,7 +31,7 @@
 #include "acp_client.h"
 #include "tool_files.h"
 #include "tuya_app_config.h"
-#include "app_config_kv.h"
+#include "app_base_config.h"
 #include "app_im.h"
 #include "bus/message_bus.h"
 

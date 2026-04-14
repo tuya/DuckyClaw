@@ -18,7 +18,7 @@
 /* ---------- configurable paths (override before including) ---------- */
 
 #ifndef CLAW_SKILLS_DIR
-#include "tool_files.h"
+#include "app_base_config.h"
 #define CLAW_SKILLS_DIR     CLAW_FS_ROOT_PATH "/skills"
 #endif
 

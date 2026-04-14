@@ -6,7 +6,7 @@
  * @copyright Copyright (c) Tuya Inc. All Rights Reserved.
  */
 
-#include "app_config_kv.h"
+#include "app_base_config.h"
 #include "bus/message_bus.h"
 #include "channels/discord_bot.h"
 #include "channels/feishu_bot.h"

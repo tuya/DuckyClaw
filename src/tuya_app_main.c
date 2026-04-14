@@ -20,7 +20,7 @@
 #include "cJSON.h"
 #include "tal_api.h"
 #include "tuya_app_config.h"
-#include "app_config_kv.h"
+#include "app_base_config.h"
 #include "tuya_iot.h"
 #include "tuya_iot_dp.h"
 #include "netmgr.h"

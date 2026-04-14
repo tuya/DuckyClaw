@@ -1,124 +1,24 @@
 /**
  * @file tool_files.h
  * @brief MCP file operation tools for DuckyClaw
- * @version 0.1
+ * @version 0.2
  * @date 2025-03-25
  *
  * @copyright Copyright (c) 2021-2026 Tuya Inc. All Rights Reserved.
  *
+ * Base macros (filesystem paths, claw_f* wrappers, claw_malloc/free) have
+ * been moved to app_base_config.h.  This header re-exports them for
+ * backward compatibility and declares the tool_files public API.
  */
 
 #ifndef __TOOL_FILES_H__
 #define __TOOL_FILES_H__
 
-#include "tuya_cloud_types.h"
+#include "app_base_config.h"
 #include "ai_mcp_server.h"
-#include "tal_api.h"
-#include "tal_fs.h"
-
-#ifndef CLAW_USE_SDCARD
-#define CLAW_USE_SDCARD 0
-#endif
-
-#if defined(CLAW_USE_SDCARD) && (CLAW_USE_SDCARD == 1)
-#include "tkl_fs.h"
-#endif
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-/***********************************************************
-************************macro define************************
-***********************************************************/
-
-/**
- * @brief Filesystem type selection
- *
- * CLAW_FS_FLASH  - Use internal flash filesystem (tal interfaces)
- * CLAW_FS_SDCARD - Use SD card filesystem (tkl interfaces)
- *
- * Set CLAW_USE_SDCARD to 1 to use SD card, 0 for flash.
- */
-
-
-/* Filesystem root path macros */
-#if defined(CLAW_USE_SDCARD) && (CLAW_USE_SDCARD == 1)
-#define CLAW_FS_ROOT_PATH          "/sdcard"
-#define CLAW_FS_MOUNT_PATH         "/sdcard"
-#define CLAW_FS_ROOT_PATH_EMPTY    0
-#else
-#if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
-#define CLAW_FS_ROOT_PATH          ""
-#define CLAW_FS_ROOT_PATH_EMPTY    1
-#else
-#define CLAW_FS_ROOT_PATH          "/spiffs"
-#define CLAW_FS_ROOT_PATH_EMPTY    0
-#endif
-#endif
-
-/* Default config file paths */
-#define CLAW_CONFIG_DIR        CLAW_FS_ROOT_PATH "/config"
-#define SOUL_FILE              CLAW_CONFIG_DIR "/SOUL.md"
-#define USER_FILE              CLAW_CONFIG_DIR "/USER.md"
-
-/**
- * Unified macro redefinitions for filesystem interfaces.
- *
- * When CLAW_USE_SDCARD == 1, use tkl (SD card) interfaces.
- * Otherwise, use tal (flash) interfaces.
- *
- * These macros allow easy switching between flash and SD card filesystems.
- */
-#if defined(CLAW_USE_SDCARD) && (CLAW_USE_SDCARD == 1)
-#define claw_fopen     tkl_fopen
-#define claw_fclose    tkl_fclose
-#define claw_fread     tkl_fread
-#define claw_fwrite    tkl_fwrite
-#define claw_fgets     tkl_fgets
-#define claw_fsync(file) tkl_fsync(tkl_fileno(file))
-#define claw_feof      tkl_feof
-#define claw_fgetsize  tkl_fgetsize
-#define claw_dir_open  tkl_dir_open
-#define claw_dir_close tkl_dir_close
-#define claw_dir_read  tkl_dir_read
-#define claw_dir_name  tkl_dir_name
-#define claw_dir_is_directory tkl_dir_is_directory
-#define claw_dir_is_regular   tkl_dir_is_regular
-#define claw_fs_mkdir         tkl_fs_mkdir
-#define claw_fs_mount         tkl_fs_mount
-#define claw_fs_remove        tkl_fs_remove
-#define claw_fs_is_exist      tkl_fs_is_exist
-#define claw_fs_mode          tkl_fs_mode
-#define claw_fs_rename        tkl_fs_rename
-#else
-#define claw_fopen          tal_fopen
-#define claw_fclose         tal_fclose
-#define claw_fread          tal_fread
-#define claw_fwrite         tal_fwrite
-#define claw_fgets          tal_fgets
-#define claw_fsync          tal_fsync
-#define claw_feof           tal_feof
-#define claw_fgetsize       tal_fgetsize
-#define claw_dir_open       tal_dir_open
-#define claw_dir_close      tal_dir_close
-#define claw_dir_read       tal_dir_read
-#define claw_dir_name       tal_dir_name
-#define claw_dir_is_directory tal_dir_is_directory
-#define claw_dir_is_regular   tal_dir_is_regular
-#define claw_fs_mkdir         tal_fs_mkdir
-#define claw_fs_remove        tal_fs_remove
-#define claw_fs_is_exist      tal_fs_is_exist
-#define claw_fs_mode          tal_fs_mode
-#define claw_fs_rename        tal_fs_rename
-#endif
-
-#if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
-#define claw_malloc    tal_psram_malloc
-#define claw_free      tal_psram_free
-#else
-#define claw_malloc    tal_malloc
-#define claw_free      tal_free
 #endif
 
 /***********************************************************
