@@ -3,6 +3,7 @@
 
 #include "im_platform.h"
 
+#define IM_CHAN_OFF       "OFF"
 #define IM_CHAN_TELEGRAM  "telegram"
 #define IM_CHAN_DISCORD   "discord"
 #define IM_CHAN_FEISHU    "feishu"

@@ -2016,16 +2016,17 @@ static void cmd_cfg_set_channel_mode(int argc, char *argv[])
     const char *mode;
 
     if (argc < 2) {
-        tal_cli_echo("Usage: cfg_set_channel_mode <telegram|discord|feishu|weixin>");
+        tal_cli_echo("Usage: cfg_set_channel_mode <OFF|telegram|discord|feishu|weixin>");
         return;
     }
 
     mode = argv[1];
-    if (strcmp(mode, IM_CHAN_TELEGRAM) != 0 &&
+    if (strcmp(mode, IM_CHAN_OFF) != 0 &&
+        strcmp(mode, IM_CHAN_TELEGRAM) != 0 &&
         strcmp(mode, IM_CHAN_DISCORD) != 0 &&
         strcmp(mode, IM_CHAN_FEISHU) != 0 &&
         strcmp(mode, IM_CHAN_WEIXIN) != 0) {
-        tal_cli_echo("ERR: mode must be telegram | discord | feishu | weixin");
+        tal_cli_echo("ERR: mode must be OFF | telegram | discord | feishu | weixin");
         return;
     }
 

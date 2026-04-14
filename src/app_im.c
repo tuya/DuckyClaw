@@ -256,20 +256,15 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
         }
         s_channel = IM_CHAN_WEIXIN;
     } else {
-        PR_WARN("unknown channel_mode '%s', fallback to %s", mode, IM_SECRET_CHANNEL_MODE);
-        rt = telegram_bot_init();
-        if (rt == OPRT_OK) {
-            rt = telegram_bot_start();
-        }
-        s_channel = IM_CHAN_TELEGRAM;
+        PR_WARN("Turned off IM channel '%s'", mode);
+        s_channel = IM_CHAN_OFF;
     }
 
     if (rt != OPRT_OK) {
-        PR_ERR("im bot start failed rt:%d (mode=%s)", rt, mode);
-        /* keep running loops so outbound/system messages still work */
+        PR_ERR("IM channel '%s' initialization failed rt:%d", mode, rt);
+        return rt;
     }
 
-    /* Register IM channel senders with sys_bus and start bridge */
     __register_im_senders();
     start_im_bridge();
 

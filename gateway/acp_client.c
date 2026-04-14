@@ -1599,7 +1599,7 @@ OPERATE_RET __acp_client_init_evt_cb(void *data)
         return rt;
     }
 
-#if defined(ACP_CLIENT_STACK_SIZE) && (ACP_CLIENT_STACK_SIZE > 0)
+#if defined(ACP_CLIENT_STACK_SIZE)
     THREAD_CFG_T cfg = {0};
     cfg.stackDepth = ACP_CLIENT_STACK_SIZE;
     cfg.priority   = THREAD_PRIO_1;
@@ -1627,7 +1627,7 @@ OPERATE_RET __acp_client_init_evt_cb(void *data)
  */
 OPERATE_RET acp_client_init(void)
 {
-#if defined(ACP_CLIENT_STACK_SIZE) && (ACP_CLIENT_STACK_SIZE > 0)
+#if defined(ACP_CLIENT_STACK_SIZE)
     PR_INFO("acp client init wait network...");
     tal_event_subscribe(EVENT_MQTT_CONNECTED, "acp_client_init", __acp_client_init_evt_cb, SUBSCRIBE_TYPE_NORMAL);
 #endif
