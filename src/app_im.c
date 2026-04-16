@@ -176,7 +176,7 @@ static OPERATE_RET start_im_bridge(void)
 {
     if (s_bridge_thd) return OPRT_OK;
     THREAD_CFG_T cfg = {0};
-    cfg.stackDepth = 4 * 1024;
+    cfg.stackDepth = 2 * 1024;
     cfg.priority   = THREAD_PRIO_1;
     cfg.thrdname   = "im_bridge";
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)

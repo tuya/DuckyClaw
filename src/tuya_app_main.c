@@ -341,10 +341,10 @@ void user_main(void)
     tal_sw_timer_init();
     tal_workq_init();
     tal_time_service_init();
-#if !defined(PLATFORM_ESP32)
+// #if !defined(PLATFORM_ESP32)
     tal_cli_init();
     tuya_app_cli_init();
-#endif
+// #endif
 
     reset_netconfig_start();
 
@@ -386,6 +386,7 @@ void user_main(void)
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
     netmgr_conn_set(NETCONN_WIFI, NETCONN_CMD_NETCFG, &(netcfg_args_t){.type = NETCFG_TUYA_BLE | NETCFG_TUYA_WIFI_AP});
 #endif
+    PR_INFO("[MEM] after network init: %d", tal_system_get_free_heap_size());
 
     PR_DEBUG("tuya_iot_init success");
 
@@ -403,6 +404,7 @@ void user_main(void)
     if (ret != OPRT_OK) {
         PR_ERR("ducky_claw_chat_init failed rt:%d", ret);
     }
+    PR_INFO("[MEM] after chat init: %d", tal_system_get_free_heap_size());
 
     ret = app_im_init();
     if (ret != OPRT_OK) {
@@ -430,6 +432,7 @@ void user_main(void)
     }
 
     /* Start tuya iot task */
+    PR_INFO("[MEM] before iot start: %d", tal_system_get_free_heap_size());
     tuya_iot_start(&ai_client);
 
     tkl_wifi_set_lp_mode(0, 0);

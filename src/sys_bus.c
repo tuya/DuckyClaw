@@ -96,6 +96,7 @@ OPERATE_RET sys_bus_init(void)
         PR_ERR("sys_bus_start_dispatch failed rt:%d", rt);
         return rt;
     }
+    // tal_event_subscribe(EVENT_MQTT_CONNECTED, "sys_bus_start_dispatch", sys_bus_start_dispatch, SUBSCRIBE_TYPE_NORMAL);
     PR_INFO("sys_bus initialized");
     return rt;
 }
@@ -123,7 +124,7 @@ OPERATE_RET sys_bus_start_dispatch(void)
     if (s_outbound_thd) return OPRT_OK;
 
     THREAD_CFG_T cfg = {0};
-    cfg.stackDepth = 12 * 1024;
+    cfg.stackDepth = 1536;
     cfg.priority   = THREAD_PRIO_1;
     cfg.thrdname   = "sys_bus_out";
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)

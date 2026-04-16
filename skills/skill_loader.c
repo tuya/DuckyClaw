@@ -217,10 +217,14 @@ static void extract_description(TUYA_FILE f, char *out, size_t out_size)
         return;
     }
 
-    size_t off       = 0;
-    char   line[256] = {0};
+    size_t off = 0;
+    char *line = (char *)claw_malloc(256);
+    if (!line) {
+        return;
+    }
+    memset(line, 0, 256);
 
-    while (claw_fgets(line, sizeof(line), f) && off < out_size - 1) {
+    while (claw_fgets(line, 256, f) && off < out_size - 1) {
         size_t len = strlen(line);
 
         if (len == 0 ||
@@ -241,6 +245,8 @@ static void extract_description(TUYA_FILE f, char *out, size_t out_size)
         memcpy(out + off, line, copy);
         off += copy;
     }
+
+    claw_free(line);
 
     while (off > 0 && out[off - 1] == ' ') {
         off--;
@@ -286,6 +292,15 @@ size_t skill_loader_build_summary(char *buf, size_t size)
 
     size_t off = 0;
 
+    char *full_path = (char *)claw_malloc(256);
+    char *desc = (char *)claw_malloc(256);
+    if (!full_path || !desc) {
+        claw_free(full_path);
+        claw_free(desc);
+        claw_dir_close(dir);
+        return 0;
+    }
+
     while (off < size - 1) {
         TUYA_FILEINFO info = NULL;
         if (claw_dir_read(dir, &info) != OPRT_OK || !info) {
@@ -302,8 +317,8 @@ size_t skill_loader_build_summary(char *buf, size_t size)
             continue;
         }
 
-        char full_path[256] = {0};
-        snprintf(full_path, sizeof(full_path), "%s/%s", CLAW_SKILLS_DIR, name);
+        memset(full_path, 0, 256);
+        snprintf(full_path, 256, "%s/%s", CLAW_SKILLS_DIR, name);
 
         TUYA_FILE f = claw_fopen(full_path, "r");
         if (!f) {
@@ -319,8 +334,8 @@ size_t skill_loader_build_summary(char *buf, size_t size)
         char title[64] = {0};
         (void)extract_title(first_line, strlen(first_line), title, sizeof(title));
 
-        char desc[256] = {0};
-        extract_description(f, desc, sizeof(desc));
+        memset(desc, 0, 256);
+        extract_description(f, desc, 256);
         claw_fclose(f);
 
         off += (size_t)snprintf(buf + off, size - off,
@@ -330,6 +345,8 @@ size_t skill_loader_build_summary(char *buf, size_t size)
                                 full_path);
     }
 
+    claw_free(full_path);
+    claw_free(desc);
     claw_dir_close(dir);
 
     if (off >= size) {

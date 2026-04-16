@@ -151,33 +151,47 @@ static OPERATE_RET proxy_open_transport(proxy_conn_t *conn, int timeout_ms)
 
 static OPERATE_RET open_http_connect_tunnel(proxy_conn_t *conn, const char *host, int port, int timeout_ms)
 {
-    char req[512] = {0};
-    int  req_len  = snprintf(req, sizeof(req),
+    char *req = (char *)im_malloc(512);
+    if (!req) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(req, 0, 512);
+    int  req_len  = snprintf(req, 512,
                              "CONNECT %s:%d HTTP/1.1\r\n"
                                "Host: %s:%d\r\n"
                                "Proxy-Connection: Keep-Alive\r\n"
                                "Connection: Keep-Alive\r\n\r\n",
                              host, port, host, port);
-    if (req_len <= 0 || req_len >= (int)sizeof(req)) {
+    if (req_len <= 0 || req_len >= 512) {
+        im_free(req);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     if (proxy_write_all_tcp(conn->tcp, req, req_len, timeout_ms) != req_len) {
+        im_free(req);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
+    im_free(req);
 
-    char header[1024] = {0};
-    int  hdr_len      = proxy_read_headers(conn->tcp, header, sizeof(header), timeout_ms);
+    char *header = (char *)im_malloc(1024);
+    if (!header) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(header, 0, 1024);
+    int  hdr_len      = proxy_read_headers(conn->tcp, header, 1024, timeout_ms);
     if (hdr_len <= 0) {
+        im_free(header);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
 
     int code = im_parse_http_status(header);
     if (code != 200) {
         IM_LOGE(TAG, "CONNECT rejected code=%d", code);
+        im_free(header);
         return OPRT_COM_ERROR;
     }
 
+    im_free(header);
     return OPRT_OK;
 }
 

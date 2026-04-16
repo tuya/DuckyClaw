@@ -6,9 +6,6 @@
  *
  * @copyright Copyright (c) 2021-2026 Tuya Inc. All Rights Reserved.
  *
- * Base macros (filesystem paths, claw_f* wrappers, claw_malloc/free) have
- * been moved to app_base_config.h.  This header re-exports them for
- * backward compatibility and declares the tool_files public API.
  */
 
 #ifndef __TOOL_FILES_H__

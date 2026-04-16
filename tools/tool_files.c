@@ -418,6 +418,12 @@ static void __find_in_dir(const char *dir_path, const char *query_lo,
         return;
     }
 
+    char *full_path = (char *)claw_malloc(256);
+    if (!full_path) {
+        claw_dir_close(dir);
+        return;
+    }
+
     for (;;) {
         TUYA_FILEINFO info = NULL;
         if (claw_dir_read(dir, &info) != OPRT_OK || !info) {
@@ -435,12 +441,11 @@ static void __find_in_dir(const char *dir_path, const char *query_lo,
         }
 
         /* Build full path */
-        char full_path[256];
         size_t dp_len = strlen(dir_path);
-        if (dp_len + 1 + strlen(entry_name) >= sizeof(full_path)) {
+        if (dp_len + 1 + strlen(entry_name) >= 256) {
             continue;
         }
-        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry_name);
+        snprintf(full_path, 256, "%s/%s", dir_path, entry_name);
 
         /* Case-insensitive substring match in either direction */
         char name_lo[128];
@@ -468,6 +473,7 @@ static void __find_in_dir(const char *dir_path, const char *query_lo,
         }
     }
 
+    claw_free(full_path);
     claw_dir_close(dir);
 }
 

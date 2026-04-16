@@ -390,8 +390,12 @@ static OPERATE_RET __ws_upgrade(int fd, const char *host, uint16_t port)
         return rt;
     }
 
-    char req[512] = {0};
-    int  n = snprintf(req, sizeof(req),
+    char *req = (char *)claw_malloc(512);
+    if (!req) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(req, 0, 512);
+    int  n = snprintf(req, 512,
         "GET / HTTP/1.1\r\n"
         "Host: %s:%u\r\n"
         "Origin: http://%s:%u\r\n"
@@ -400,30 +404,39 @@ static OPERATE_RET __ws_upgrade(int fd, const char *host, uint16_t port)
         "Sec-WebSocket-Key: %s\r\n"
         "Sec-WebSocket-Version: 13\r\n\r\n",
         host, (unsigned)port, host, (unsigned)port, client_key);
-    if (n <= 0 || (size_t)n >= sizeof(req)) {
+    if (n <= 0 || (size_t)n >= 512) {
+        claw_free(req);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     rt = __send_all(fd, (const uint8_t *)req, (size_t)n);
+    claw_free(req);
     if (rt != OPRT_OK) {
         PR_ERR("acp upgrade send failed rt=%d", rt);
         return rt;
     }
 
     /* Read the server HTTP response (look for "101") */
-    uint8_t resp[512] = {0};
-    int   got = __recv_timeout(fd, resp, sizeof(resp) - 1, ACP_SYNC_RECV_TIMEOUT_MS);
+    uint8_t *resp = (uint8_t *)claw_malloc(512);
+    if (!resp) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(resp, 0, 512);
+    int   got = __recv_timeout(fd, resp, 512 - 1, ACP_SYNC_RECV_TIMEOUT_MS);
     if (got <= 0) {
         PR_ERR("acp upgrade recv timeout/err got=%d", got);
+        claw_free(resp);
         return OPRT_RECV_ERR;
     }
     resp[got] = '\0';
 
     if (!strstr((const char *)resp, "101")) {
         PR_ERR("acp upgrade rejected: %.80s", (const char *)resp);
+        claw_free(resp);
         return OPRT_COM_ERROR;
     }
 
+    claw_free(resp);
     PR_INFO("acp ws upgrade ok host=%s:%u", host, (unsigned)port);
     return OPRT_OK;
 }
@@ -1239,16 +1252,22 @@ static void __acp_dispatch(const char *text, size_t text_len)
 
     if (strcmp(type->valuestring, "event") == 0) {
         cJSON *event = cJSON_GetObjectItem(root, "event");
-        char   event_text[ACP_CLIENT_REPLY_BUF_SIZE] = {0};
+        char  *event_text = (char *)claw_malloc(ACP_CLIENT_REPLY_BUF_SIZE);
+        if (!event_text) {
+            cJSON_Delete(root);
+            return;
+        }
+        memset(event_text, 0, ACP_CLIENT_REPLY_BUF_SIZE);
         bool is_final = FALSE;
 
         if (!cJSON_IsString(event) || !event->valuestring) {
+            claw_free(event_text);
             cJSON_Delete(root);
             return;
         }
 
         if (strcmp(event->valuestring, "tick") != 0 &&
-            __acp_extract_event_text(root, event_text, sizeof(event_text))) {
+            __acp_extract_event_text(root, event_text, ACP_CLIENT_REPLY_BUF_SIZE)) {
             size_t text_size = strlen(event_text);
             memcpy(s_ctx.reply_buf, event_text, text_size);
             s_ctx.reply_buf[text_size] = '\0';
@@ -1287,6 +1306,8 @@ static void __acp_dispatch(const char *text, size_t text_len)
             uint32_t seq = cJSON_IsNumber(seq_field) ? (uint32_t)seq_field->valuedouble : 0;
             PR_DEBUG("acp tick seq=%u (keepalive, no response needed)", (unsigned)seq);
         }
+
+        claw_free(event_text);
 
     } else if (strcmp(type->valuestring, "res") == 0) {
         /* connect response is handled synchronously in __acp_connect;

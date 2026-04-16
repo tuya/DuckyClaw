@@ -106,7 +106,7 @@ static void weixin_kv_clear(void)
 
 int reset_netconfig_check(void)
 {
-    int rt;
+    int rt = OPRT_OK;
     uint8_t rst_cnt = 0;
 
     TUYA_CALL_ERR_LOG(reset_count_read(&rst_cnt));

@@ -9,4 +9,24 @@ menu "IM Config"
         default 16384
         help
             Stack size in bytes for the IM feishu poll thread (default 16*1024).
+    config IM_TG_POLL_STACK
+        int "IM telegram poll thread stack size (bytes)"
+        default 12288
+        help
+            Stack size in bytes for the IM telegram poll thread (default 12*1024).
+    config IM_DC_POLL_STACK
+        int "IM discord poll thread stack size (bytes)"
+        default 12288
+        help
+            Stack size in bytes for the IM discord poll thread (default 12*1024).
+    config IM_WX_POLL_STACK
+        int "IM weixin poll thread stack size (bytes)"
+        default 14336
+        help
+            Stack size in bytes for the IM weixin poll thread (default 14*1024).
+    config IM_WX_QR_STACK
+        int "IM weixin QR code thread stack size (bytes)"
+        default 10240
+        help
+            Stack size in bytes for the IM weixin QR code thread (default 10*1024).
 endmenu

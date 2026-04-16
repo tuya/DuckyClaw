@@ -59,7 +59,9 @@
 #endif
 #define IM_TG_POLL_TIMEOUT_S       30
 #define IM_TG_MAX_MSG_LEN          4096
+#ifndef IM_TG_POLL_STACK
 #define IM_TG_POLL_STACK           (12 * 1024)
+#endif
 #define IM_TG_POLL_PRIO            5
 #define IM_TG_FAIL_BASE_MS         2000
 #define IM_TG_FAIL_MAX_MS          60000
@@ -71,7 +73,9 @@
 #endif
 #define IM_DC_API_BASE             "/api/v10"
 #define IM_DC_MAX_MSG_LEN          2000
+#ifndef IM_DC_POLL_STACK
 #define IM_DC_POLL_STACK           (12 * 1024)
+#endif
 #define IM_DC_FAIL_BASE_MS         2000
 #define IM_DC_FAIL_MAX_MS          60000
 #define IM_DC_LAST_MSG_SAVE_INTERVAL_MS  (5 * 1000)

@@ -146,8 +146,13 @@ OPERATE_RET session_get_history_json(const char *chat_id, char *buf, size_t size
     int    count                       = 0;
     int    write_idx                   = 0;
 
-    char line[2048] = {0};
-    while (claw_fgets(line, (int)sizeof(line), f)) {
+    char *line = (char *)claw_malloc(2048);
+    if (!line) {
+        claw_fclose(f);
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(line, 0, 2048);
+    while (claw_fgets(line, 2048, f)) {
         size_t len = strlen(line);
         if (len > 0 && line[len - 1] == '\n') {
             line[len - 1] = '\0';
@@ -172,6 +177,7 @@ OPERATE_RET session_get_history_json(const char *chat_id, char *buf, size_t size
         }
     }
     claw_fclose(f);
+    claw_free(line);
 
     /* Build output JSON array from ring buffer */
     cJSON *arr   = cJSON_CreateArray();

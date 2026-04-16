@@ -206,8 +206,9 @@ static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties
     /* Pass 0 so tal_time_get_local_time_custom uses current time internally */
     __to_local_tm(0, &tm_local, tz_label, sizeof(tz_label));
 
-    char result[512];
-    snprintf(result, sizeof(result),
+    char *result = (char *)claw_malloc(512);
+    if (!result) { return OPRT_MALLOC_FAILED; }
+    snprintf(result, 512,
              "Current time: %04d-%02d-%02d %02d:%02d:%02d %s (UTC epoch=%lld). "
              "To schedule a reminder, call cron_add with the desired "
              "year/month/day/hour/minute/second. For relative delays such as "
@@ -223,6 +224,7 @@ static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties
              tm_local.tm_year + 1900, tm_local.tm_mon + 1, tm_local.tm_mday,
              tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec,
              tz_label);
+    claw_free(result);
     return OPRT_OK;
 }
 
@@ -391,13 +393,15 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
     }
 
     if (!found) {
-        char err_msg[256];
-        snprintf(err_msg, sizeof(err_msg),
+        char *err_msg = (char *)claw_malloc(256);
+        if (!err_msg) { return OPRT_MALLOC_FAILED; }
+        snprintf(err_msg, 256,
                  "Error: job '%s' (id=%s) was scheduled but not found in stored list "
                  "- possible file write failure. Please retry.",
                  job.name, job.id);
         PR_ERR("cron_add verify failed: %s", err_msg);
         ai_mcp_return_value_set_str(ret_val, err_msg);
+        claw_free(err_msg);
         return OPRT_FILE_WRITE_FAILED;
     }
 
@@ -406,9 +410,12 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
     char tz_label[16];
     __to_local_tm(job.next_run, &tm_next, tz_label, sizeof(tz_label));
 
-    char result[320];
+    char *result = (char *)claw_malloc(320);
+    if (!result) {
+        return OPRT_MALLOC_FAILED;
+    }
     if (job.kind == CRON_KIND_EVERY) {
-        snprintf(result, sizeof(result),
+        snprintf(result, 320,
                  "OK: Added recurring job '%s' (id=%s), runs every %lu seconds. "
                  "Next run at epoch %lld (%04d-%02d-%02d %02d:%02d:%02d %s). "
                  "Verified in stored list.",
@@ -419,7 +426,7 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
         POSIX_TM_S tm_at;
         char tz_label_at[16];
         __to_local_tm(job.at_epoch, &tm_at, tz_label_at, sizeof(tz_label_at));
-        snprintf(result, sizeof(result),
+        snprintf(result, 320,
                  "OK: Added one-shot job '%s' (id=%s), fires at epoch %lld "
                  "(%04d-%02d-%02d %02d:%02d:%02d %s).%s Verified in stored list.",
                  job.name, job.id, (long long)job.at_epoch,
@@ -430,6 +437,7 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
 
     ai_mcp_return_value_set_str(ret_val, result);
     PR_DEBUG("cron_add: %s", result);
+    claw_free(result);
     return OPRT_OK;
 }
 

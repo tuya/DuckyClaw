@@ -48,6 +48,7 @@ extern void tal_thread_dump_watermark(void);
 #define CLI_UUID_LENGTH           20
 #define CLI_AUTHKEY_LENGTH        32
 #define CLI_FS_LS_MAX_DEPTH       3
+#define CLI_WIFI_SCAN_MAX_AP_NUM  20
 
 #if defined(CLAW_FS_ROOT_PATH_EMPTY) && (CLAW_FS_ROOT_PATH_EMPTY == 1)
 #define CLI_FS_DEFAULT_PATH       "/"
@@ -1369,6 +1370,9 @@ static void cmd_sys_wifi_scan(int argc, char *argv[])
         return;
     }
 
+    if (ap_num > CLI_WIFI_SCAN_MAX_AP_NUM) {
+        ap_num = CLI_WIFI_SCAN_MAX_AP_NUM;
+    }
     cli_echof_("Found %u APs:", (unsigned)ap_num);
     for (uint32_t i = 0; i < ap_num; i++) {
         cli_echof_("  [%2u] %-32s  ch:%2d  rssi:%d  sec:%d",

@@ -59,10 +59,15 @@ static bool heartbeat_has_tasks(void)
         return false;
     }
 
-    char line[256]  = {0};
+    char *line = (char *)claw_malloc(256);
+    if (!line) {
+        claw_fclose(f);
+        return false;
+    }
+    memset(line, 0, 256);
     bool found_task = false;
 
-    while (claw_fgets(line, sizeof(line), f)) {
+    while (claw_fgets(line, 256, f)) {
         const char *p = line;
 
         /* Skip leading whitespace */
@@ -93,6 +98,7 @@ static bool heartbeat_has_tasks(void)
         break;
     }
 
+    claw_free(line);
     claw_fclose(f);
     return found_task;
 }

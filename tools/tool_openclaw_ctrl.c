@@ -326,58 +326,6 @@ static OPERATE_RET __tool_openclaw_ctrl(const MCP_PROPERTY_LIST_T *properties,
         PR_ERR("[openclaw_ctrl] ACP not connected");
     }
 
-    /* -----------------------------------------------------------------------
-     * Fallback path: Feishu rich-text with @mentions
-     *
-     * Priority:
-     *   1. Agent-provided mentions_json (explicit, from feishu_get_members).
-     *   2. Auto-resolve: fetch members and search for "openclaw" by name.
-     *   3. No @mention (plain text) if resolution fails.
-     * ----------------------------------------------------------------------- */
-#if 0
-    const char *effective_mentions = NULL;
-    char        auto_mention_buf[256] = {0};
-
-    if (mentions_json && mentions_json[0] != '\0') {
-        /* Agent explicitly provided mentions. */
-        effective_mentions = mentions_json;
-        PR_INFO("[openclaw_ctrl] Feishu fallback using agent-provided mentions");
-    } else {
-        /* Try to auto-resolve @openclaw from the group member list. */
-        char chat_id[96] = {0};
-        if (__load_chat_id(chat_id, sizeof(chat_id))) {
-            if (__is_feishu_group_chat_id(chat_id)) {
-                if (__auto_resolve_mention(chat_id, "openclaw",
-                                           auto_mention_buf, sizeof(auto_mention_buf))) {
-                    effective_mentions = auto_mention_buf;
-                }
-            } else {
-                PR_INFO("[openclaw_ctrl] Feishu fallback skip auto-mention: chat_id=%s is not a group chat", chat_id);
-            }
-        } else {
-            PR_WARN("[openclaw_ctrl] chat_id not set, cannot auto-resolve @mention");
-        }
-    }
-
-    PR_INFO("[openclaw_ctrl] Feishu fallback effective_mentions=%s msg=%.128s",
-            effective_mentions ? effective_mentions : "(none)", message);
-
-    OPERATE_RET fb_rt = app_im_bot_send_message_with_mentions(message, effective_mentions);
-    if (fb_rt != OPRT_OK) {
-        PR_ERR("[openclaw_ctrl] Feishu send failed rt=%d", fb_rt);
-        ai_mcp_return_value_set_str(ret_val,
-            "Error: WS unavailable and Feishu send failed");
-        return fb_rt;
-    }
-
-    if (effective_mentions && effective_mentions[0] != '\0') {
-        ai_mcp_return_value_set_str(ret_val,
-            "Message sent via Feishu with @mention (OpenClaw WS not connected)");
-    } else {
-        ai_mcp_return_value_set_str(ret_val,
-            "Message sent via Feishu (OpenClaw WS not connected, no @mention resolved)");
-    }
-#endif
     return OPRT_OK;
 }
 

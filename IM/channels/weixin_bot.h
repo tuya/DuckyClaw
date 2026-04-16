@@ -29,8 +29,12 @@ extern "C" {
 #define IM_WX_POLL_TIMEOUT_S       35
 #define IM_WX_QR_POLL_TIMEOUT_S    35
 #define IM_WX_MAX_MSG_LEN          4096
+#ifndef IM_WX_POLL_STACK
 #define IM_WX_POLL_STACK           (14 * 1024)
+#endif
+#ifndef IM_WX_QR_STACK
 #define IM_WX_QR_STACK             (10 * 1024)
+#endif
 #define IM_WX_FAIL_BASE_MS         2000
 #define IM_WX_FAIL_MAX_MS          60000
 #define IM_WX_SESSION_PAUSE_MS     (60 * 60 * 1000)

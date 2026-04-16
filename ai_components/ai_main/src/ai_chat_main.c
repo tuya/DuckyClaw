@@ -286,7 +286,7 @@ static void __ai_button_function_cb(char *name, TDL_BUTTON_TOUCH_EVENT_E event, 
 @brief Open button functionality for AI chat mode
 @return OPERATE_RET Operation result
 */
-static OPERATE_RET __ai_chat_mode_open_button(void)
+static OPERATE_RET __ai_chat_mode_open_button(void *data)
 {
     OPERATE_RET rt = OPRT_OK;
 
@@ -358,6 +358,24 @@ static OPERATE_RET __ai_chat_mode_register(void)
     return rt;
 }
 
+static OPERATE_RET __ai_chat_mode_start_task(void *data)
+{
+    OPERATE_RET rt = OPRT_OK;
+
+    THREAD_CFG_T thrd_cfg = {
+        .priority = THREAD_PRIO_5,
+        .stackDepth = 2 * 1024,
+        .thrdname = "ai_chat_mode",
+        #ifdef ENABLE_EXT_RAM
+        .psram_mode = 1,
+        #endif            
+    };
+
+    TUYA_CALL_ERR_RETURN(tal_thread_create_and_start(&sg_ai_chat_mode_task, NULL, NULL,\
+                                                     __ai_chat_mode_task, NULL, &thrd_cfg));
+
+    return OPRT_OK;
+}
 
 /**
 @brief Initialize AI chat module
@@ -427,20 +445,11 @@ OPERATE_RET ai_chat_init(AI_CHAT_MODE_CFG_T *cfg)
     TUYA_CALL_ERR_RETURN(tal_event_subscribe(EVENT_AUDIO_VAD, "vad_change", __ai_vad_change_evt, SUBSCRIBE_TYPE_NORMAL));
 #endif
 
-    THREAD_CFG_T thrd_cfg = {
-        .priority = THREAD_PRIO_5,
-        .stackDepth = 2 * 1024,
-        .thrdname = "ai_chat_mode",
-        #ifdef ENABLE_EXT_RAM
-        .psram_mode = 1,
-        #endif            
-    };
-
-    TUYA_CALL_ERR_RETURN(tal_thread_create_and_start(&sg_ai_chat_mode_task, NULL, NULL,\
-                                                     __ai_chat_mode_task, NULL, &thrd_cfg));
+    tal_event_subscribe(EVENT_MQTT_CONNECTED, "ai_chat_mode_start_task", __ai_chat_mode_start_task, SUBSCRIBE_TYPE_EMERGENCY);
 
 #if defined(ENABLE_BUTTON) && (ENABLE_BUTTON == 1)
-    TUYA_CALL_ERR_LOG(__ai_chat_mode_open_button());
+    // TUYA_CALL_ERR_LOG(__ai_chat_mode_open_button());
+    tal_event_subscribe(EVENT_MQTT_CONNECTED, "open_button_task", __ai_chat_mode_open_button, SUBSCRIBE_TYPE_NORMAL);
 #endif
     PR_DEBUG("ai chat mode init mode %d success", mode);
 

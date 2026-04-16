@@ -361,17 +361,22 @@ static OPERATE_RET dc_ws_handshake(dc_gateway_conn_t *conn)
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
 
-    char     header[2048] = {0};
+    char    *header    = (char *)im_malloc(2048);
+    if (!header) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(header, 0, 2048);
     int      total        = 0;
     int      header_end   = -1;
     uint32_t start_ms     = tal_system_get_millisecond();
 
-    while ((int)(tal_system_get_millisecond() - start_ms) < DC_HTTP_TIMEOUT_MS && total < (int)sizeof(header) - 1) {
-        int n = dc_conn_read(conn, (uint8_t *)header + total, (int)sizeof(header) - total - 1, 1000);
+    while ((int)(tal_system_get_millisecond() - start_ms) < DC_HTTP_TIMEOUT_MS && total < 2048 - 1) {
+        int n = dc_conn_read(conn, (uint8_t *)header + total, 2048 - total - 1, 1000);
         if (n == OPRT_RESOURCE_NOT_READY) {
             continue;
         }
         if (n <= 0) {
+            im_free(header);
             return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
         }
 
@@ -384,12 +389,14 @@ static OPERATE_RET dc_ws_handshake(dc_gateway_conn_t *conn)
     }
 
     if (header_end <= 0) {
+        im_free(header);
         return OPRT_TIMEOUT;
     }
 
     uint16_t status = im_parse_http_status(header);
     if (status != 101) {
         IM_LOGE(TAG, "discord gateway handshake failed http=%u", status);
+        im_free(header);
         return OPRT_COM_ERROR;
     }
 
@@ -397,12 +404,14 @@ static OPERATE_RET dc_ws_handshake(dc_gateway_conn_t *conn)
     conn->rx_len  = 0;
     if (remain > 0) {
         if (remain > conn->rx_cap) {
+            im_free(header);
             return OPRT_BUFFER_NOT_ENOUGH;
         }
         memcpy(conn->rx_buf, header + header_end, remain);
         conn->rx_len = remain;
     }
 
+    im_free(header);
     IM_LOGI(TAG, "discord gateway handshake success");
     return OPRT_OK;
 }
@@ -522,21 +531,29 @@ static OPERATE_RET dc_ws_poll_frame(dc_gateway_conn_t *conn, int wait_ms, uint8_
         return rt;
     }
 
-    uint8_t tmp[1024] = {0};
-    int     n         = dc_conn_read(conn, tmp, sizeof(tmp), wait_ms);
+    uint8_t *tmp = (uint8_t *)im_malloc(1024);
+    if (!tmp) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(tmp, 0, 1024);
+    int n = dc_conn_read(conn, tmp, 1024, wait_ms);
     if (n == OPRT_RESOURCE_NOT_READY) {
+        im_free(tmp);
         return OPRT_RESOURCE_NOT_READY;
     }
     if (n <= 0) {
+        im_free(tmp);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
 
     if (conn->rx_len + (size_t)n > conn->rx_cap) {
+        im_free(tmp);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     memcpy(conn->rx_buf + conn->rx_len, tmp, (size_t)n);
     conn->rx_len += (size_t)n;
+    im_free(tmp);
 
     consumed = 0;
     rt       = dc_ws_decode_one_frame(conn, opcode, payload, payload_len, &consumed);
@@ -549,17 +566,24 @@ static OPERATE_RET dc_ws_poll_frame(dc_gateway_conn_t *conn, int wait_ms, uint8_
 static OPERATE_RET dc_gateway_send_identify(dc_gateway_conn_t *conn)
 {
     /* Discord IDENTIFY frame payload includes "op":2. */
-    char payload[512] = {0};
-    int  n            = snprintf(payload, sizeof(payload),
+    char *payload = (char *)im_malloc(512);
+    if (!payload) {
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(payload, 0, 512);
+    int  n            = snprintf(payload, 512,
                                  "{\"op\":2,\"d\":{\"token\":\"%s\",\"intents\":%u,\"properties\":{\"os\":\"tuyaopen\",\"browser\":"
                                              "\"im_bot\",\"device\":\"im_bot\"}}}",
                                  s_bot_token, (unsigned)IM_DC_GATEWAY_INTENTS);
-    if (n <= 0 || n >= (int)sizeof(payload)) {
+    if (n <= 0 || n >= 512) {
+        im_free(payload);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     IM_LOGI(TAG, "discord gateway identify sent intents=%u", (unsigned)IM_DC_GATEWAY_INTENTS);
-    return dc_ws_send_frame(conn, 0x1, (const uint8_t *)payload, (size_t)n);
+    OPERATE_RET rt = dc_ws_send_frame(conn, 0x1, (const uint8_t *)payload, (size_t)n);
+    im_free(payload);
+    return rt;
 }
 
 static OPERATE_RET dc_gateway_send_heartbeat(dc_gateway_conn_t *conn, int64_t seq)
@@ -822,11 +846,16 @@ static OPERATE_RET dc_http_call_via_proxy(const char *path, const char *method, 
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
 
-    int  body_len         = post_data ? (int)strlen(post_data) : 0;
-    char req_header[1024] = {0};
+    int   body_len         = post_data ? (int)strlen(post_data) : 0;
+    char *req_header       = (char *)im_malloc(1024);
+    if (!req_header) {
+        proxy_conn_close(conn);
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(req_header, 0, 1024);
     int  req_len;
     if (post_data) {
-        req_len = snprintf(req_header, sizeof(req_header),
+        req_len = snprintf(req_header, 1024,
                            "%s %s HTTP/1.1\r\n"
                            "Host: %s\r\n"
                            "Authorization: Bot %s\r\n"
@@ -836,7 +865,7 @@ static OPERATE_RET dc_http_call_via_proxy(const char *path, const char *method, 
                            "Connection: close\r\n\r\n",
                            method, path, DC_HOST, s_bot_token, body_len);
     } else {
-        req_len = snprintf(req_header, sizeof(req_header),
+        req_len = snprintf(req_header, 1024,
                            "%s %s HTTP/1.1\r\n"
                            "Host: %s\r\n"
                            "Authorization: Bot %s\r\n"
@@ -845,19 +874,23 @@ static OPERATE_RET dc_http_call_via_proxy(const char *path, const char *method, 
                            method, path, DC_HOST, s_bot_token);
     }
 
-    if (req_len <= 0 || req_len >= (int)sizeof(req_header)) {
+    if (req_len <= 0 || req_len >= 1024) {
+        im_free(req_header);
         proxy_conn_close(conn);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     if (proxy_conn_write(conn, req_header, req_len) != req_len) {
+        im_free(req_header);
         proxy_conn_close(conn);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
     if (body_len > 0 && proxy_conn_write(conn, post_data, body_len) != body_len) {
+        im_free(req_header);
         proxy_conn_close(conn);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
+    im_free(req_header);
 
     size_t raw_cap = 4096;
     size_t raw_len = 0;
@@ -946,11 +979,17 @@ static OPERATE_RET dc_http_call_direct(const char *path, const char *method, con
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
 
-    int  body_len         = post_data ? (int)strlen(post_data) : 0;
-    char req_header[1024] = {0};
+    int   body_len         = post_data ? (int)strlen(post_data) : 0;
+    char *req_header       = (char *)im_malloc(1024);
+    if (!req_header) {
+        dc_conn_close(conn);
+        im_free(conn);
+        return OPRT_MALLOC_FAILED;
+    }
+    memset(req_header, 0, 1024);
     int  req_len;
     if (post_data) {
-        req_len = snprintf(req_header, sizeof(req_header),
+        req_len = snprintf(req_header, 1024,
                            "%s %s HTTP/1.1\r\n"
                            "Host: %s\r\n"
                            "Authorization: Bot %s\r\n"
@@ -960,7 +999,7 @@ static OPERATE_RET dc_http_call_direct(const char *path, const char *method, con
                            "Connection: close\r\n\r\n",
                            method, path, DC_HOST, s_bot_token, body_len);
     } else {
-        req_len = snprintf(req_header, sizeof(req_header),
+        req_len = snprintf(req_header, 1024,
                            "%s %s HTTP/1.1\r\n"
                            "Host: %s\r\n"
                            "Authorization: Bot %s\r\n"
@@ -968,22 +1007,26 @@ static OPERATE_RET dc_http_call_direct(const char *path, const char *method, con
                            "Connection: close\r\n\r\n",
                            method, path, DC_HOST, s_bot_token);
     }
-    if (req_len <= 0 || req_len >= (int)sizeof(req_header)) {
+    if (req_len <= 0 || req_len >= 1024) {
+        im_free(req_header);
         dc_conn_close(conn);
         im_free(conn);
         return OPRT_BUFFER_NOT_ENOUGH;
     }
 
     if (dc_conn_write(conn, (const uint8_t *)req_header, req_len) != req_len) {
+        im_free(req_header);
         dc_conn_close(conn);
         im_free(conn);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
     if (body_len > 0 && dc_conn_write(conn, (const uint8_t *)post_data, body_len) != body_len) {
+        im_free(req_header);
         dc_conn_close(conn);
         im_free(conn);
         return OPRT_LINK_CORE_HTTP_CLIENT_SEND_ERROR;
     }
+    im_free(req_header);
 
     size_t raw_cap = 4096;
     size_t raw_len = 0;
