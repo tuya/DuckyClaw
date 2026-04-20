@@ -13,6 +13,13 @@
 #include "im_secrets.h"
 #endif
 
+#define IM_CHAN_OFF       "OFF"
+#define IM_CHAN_TELEGRAM  "telegram"
+#define IM_CHAN_DISCORD   "discord"
+#define IM_CHAN_FEISHU    "feishu"
+#define IM_CHAN_WEIXIN    "weixin"
+#define IM_CHAN_WS        "ws"
+
 /* ---- Secrets (override in im_secrets.h) ---- */
 
 #ifndef IM_SECRET_TG_TOKEN

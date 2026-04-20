@@ -18,11 +18,6 @@
 
 static const char *TAG = "feishu";
 
-typedef struct {
-    const char *open_id;
-    const char *name;
-} feishu_mention_t;
-
 static char          s_app_id[96]        = {0};
 static char          s_app_secret[160]   = {0};
 static char          s_allow_from[512]   = {0};
@@ -31,8 +26,6 @@ static uint32_t      s_tenant_expire_ms  = 0;
 static uint8_t      *s_fs_cacert         = NULL;
 static size_t        s_fs_cacert_len     = 0;
 static THREAD_HANDLE s_ws_thread         = NULL;
-static char          s_bot_open_id[96]   = {0};
-static char          s_bot_name[64]      = {0};
 
 #define FS_HOST                    IM_FS_API_HOST
 #define FS_HTTP_TIMEOUT_MS         10000
@@ -48,15 +41,8 @@ static char          s_bot_name[64]      = {0};
 #define FS_WS_FRAME_MAX_VALUE      256
 #define FS_DEDUP_CACHE_SIZE        512
 #define FS_MAX_FRAG_PARTS          8
-#define FS_MENTION_MAX             8
 #ifndef IM_FS_POLL_STACK
 #define IM_FS_POLL_STACK (16 * 1024)
-#endif
-
-/* Enable group @mention filter: only messages that @bot are accepted in groups.
- * Define IM_FS_MENTION_FILTER_ENABLE=0 to disable and accept all group messages. */
-#ifndef IM_FS_MENTION_FILTER_ENABLE
-#define IM_FS_MENTION_FILTER_ENABLE 1
 #endif
 
 /* -------- allow_from -------- */
@@ -2172,308 +2158,7 @@ static void extract_message_text(const char *msg_type, const char *content_json,
     cJSON_Delete(obj);
 }
 
-/* -------- @mention helpers -------- */
-
-/**
- * @brief Check if the bot itself is mentioned in the message mentions array
- * @param[in] mentions cJSON array of mention objects from message.mentions
- * @return true if bot is mentioned (by open_id match or @_all present)
- */
-static bool fs_is_bot_mentioned(cJSON *mentions, const char *content_json)
-{
-    if (s_bot_open_id[0] == '\0') {
-        return false;
-    }
-
-    if (content_json && strstr(content_json, "@_all")) {
-        return true;
-    }
-
-    if (!cJSON_IsArray(mentions)) {
-        return false;
-    }
-
-    cJSON *m = NULL;
-    cJSON_ArrayForEach(m, mentions)
-    {
-        if (!cJSON_IsObject(m)) {
-            continue;
-        }
-        cJSON *id_obj = cJSON_GetObjectItem(m, "id");
-        if (!cJSON_IsObject(id_obj)) {
-            continue;
-        }
-        const char *open_id = im_json_str(id_obj, "open_id", NULL);
-        if (open_id && strcmp(open_id, s_bot_open_id) == 0) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/**
- * @brief Strip the bot's own @mention placeholder from text, keep other mentions
- * @param[in,out] text message text buffer (modified in-place)
- * @param[in] mentions cJSON array of mention objects
- */
-static void fs_strip_bot_mention(char *text, cJSON *mentions)
-{
-    if (!text || text[0] == '\0' || !cJSON_IsArray(mentions) || s_bot_open_id[0] == '\0') {
-        return;
-    }
-
-    cJSON *m = NULL;
-    cJSON_ArrayForEach(m, mentions)
-    {
-        if (!cJSON_IsObject(m)) {
-            continue;
-        }
-        cJSON *id_obj = cJSON_GetObjectItem(m, "id");
-        if (!cJSON_IsObject(id_obj)) {
-            continue;
-        }
-        const char *open_id = im_json_str(id_obj, "open_id", NULL);
-        if (!open_id || strcmp(open_id, s_bot_open_id) != 0) {
-            continue;
-        }
-        const char *key = im_json_str(m, "key", NULL);
-        if (!key || key[0] == '\0') {
-            continue;
-        }
-        char *pos = strstr(text, key);
-        while (pos) {
-            size_t key_len  = strlen(key);
-            size_t tail_len = strlen(pos + key_len);
-            memmove(pos, pos + key_len, tail_len + 1);
-            pos = strstr(pos, key);
-        }
-    }
-
-    /* Trim leading/trailing whitespace */
-    char *start = text;
-    while (*start && isspace((unsigned char)*start)) {
-        start++;
-    }
-    if (start != text) {
-        memmove(text, start, strlen(start) + 1);
-    }
-    size_t len = strlen(text);
-    while (len > 0 && isspace((unsigned char)text[len - 1])) {
-        text[--len] = '\0';
-    }
-}
-
-/**
- * @brief Fetch bot's own open_id via Feishu API (bot info endpoint)
- * @return OPRT_OK on success
- */
-static OPERATE_RET fs_fetch_bot_open_id(void)
-{
-    if (s_bot_open_id[0] != '\0') {
-        return OPRT_OK;
-    }
-
-    OPERATE_RET rt = ensure_tenant_token();
-    if (rt != OPRT_OK) {
-        return rt;
-    }
-
-    char *resp = im_malloc(FS_HTTP_RESP_BUF_SIZE);
-    if (!resp) {
-        return OPRT_MALLOC_FAILED;
-    }
-    memset(resp, 0, FS_HTTP_RESP_BUF_SIZE);
-
-    uint16_t status = 0;
-    rt = fs_http_call(FS_HOST, "/open-apis/bot/v3/info", "GET", NULL, s_tenant_token, resp,
-                      FS_HTTP_RESP_BUF_SIZE, &status);
-    if (rt != OPRT_OK || status != 200) {
-        im_free(resp);
-        return OPRT_COM_ERROR;
-    }
-
-    cJSON *root = cJSON_Parse(resp);
-    im_free(resp);
-    if (!root) {
-        return OPRT_CR_CJSON_ERR;
-    }
-
-    OPERATE_RET out = OPRT_NOT_FOUND;
-    cJSON *code = cJSON_GetObjectItem(root, "code");
-    if (cJSON_IsNumber(code) && (int)code->valuedouble == 0) {
-        cJSON *bot = cJSON_GetObjectItem(root, "bot");
-        if (cJSON_IsObject(bot)) {
-            const char *open_id  = im_json_str(bot, "open_id", NULL);
-            const char *bot_name = im_json_str(bot, "app_name", NULL);
-            if (open_id && open_id[0] != '\0') {
-                im_safe_copy(s_bot_open_id, sizeof(s_bot_open_id), open_id);
-                IM_LOGI(TAG, "bot open_id=%s", s_bot_open_id);
-                out = OPRT_OK;
-            }
-            if (bot_name && bot_name[0] != '\0') {
-                im_safe_copy(s_bot_name, sizeof(s_bot_name), bot_name);
-                IM_LOGI(TAG, "bot name=%s", s_bot_name);
-            }
-        }
-    }
-
-    cJSON_Delete(root);
-    return out;
-}
-
-/* ---------------------------------------------------------------------------
- * User name → open_id resolution cache
- * --------------------------------------------------------------------------- */
-
-#define FS_USER_CACHE_MAX  16
-#define FS_USER_NAME_MAX   64
-#define FS_USER_OID_MAX    96
-
-typedef struct {
-    char name[FS_USER_NAME_MAX];
-    char open_id[FS_USER_OID_MAX];
-} fs_user_cache_entry_t;
-
-static fs_user_cache_entry_t s_user_cache[FS_USER_CACHE_MAX];
-static int                   s_user_cache_count = 0;
-
-/**
- * @brief Look up a user's open_id by display name using the Feishu search API.
- *        Results are cached in s_user_cache to avoid repeated API calls.
- * @param[in]  name        display name to search for (case-insensitive prefix match)
- * @param[out] open_id_out output buffer for the resolved open_id
- * @param[in]  out_size    size of open_id_out
- * @return TRUE if resolved, FALSE otherwise
- */
-static BOOL_T fs_resolve_user_by_name(const char *name, char *open_id_out, size_t out_size)
-{
-    if (!name || name[0] == '\0' || !open_id_out || out_size == 0) {
-        return FALSE;
-    }
-
-    /* Check cache first */
-    for (int i = 0; i < s_user_cache_count; i++) {
-        if (strcasecmp(s_user_cache[i].name, name) == 0) {
-            im_safe_copy(open_id_out, out_size, s_user_cache[i].open_id);
-            return TRUE;
-        }
-    }
-
-    /* Ensure we have a valid tenant token */
-    if (ensure_tenant_token() != OPRT_OK) {
-        return FALSE;
-    }
-
-    /* Build query path: /open-apis/search/v1/user?query=<name>&page_size=1 */
-    char path[256] = {0};
-    snprintf(path, sizeof(path), "/open-apis/search/v1/user?query=%s&page_size=1", name);
-
-    char *resp = im_malloc(FS_HTTP_RESP_BUF_SIZE);
-    if (!resp) {
-        return FALSE;
-    }
-    memset(resp, 0, FS_HTTP_RESP_BUF_SIZE);
-
-    uint16_t    status = 0;
-    OPERATE_RET rt     = fs_http_call(FS_HOST, path, "GET", NULL, s_tenant_token, resp,
-                                      FS_HTTP_RESP_BUF_SIZE, &status);
-    if (rt != OPRT_OK || status != 200) {
-        IM_LOGW(TAG, "user search failed name=%s rt=%d status=%u", name, rt, status);
-        im_free(resp);
-        return FALSE;
-    }
-
-    BOOL_T found = FALSE;
-    cJSON *root  = cJSON_Parse(resp);
-    im_free(resp);
-    if (!root) {
-        return FALSE;
-    }
-
-    /* Response: {"code":0,"data":{"users":[{"open_id":"ou_xxx","name":"..."}]}} */
-    cJSON *data  = cJSON_GetObjectItem(root, "data");
-    cJSON *users = data ? cJSON_GetObjectItem(data, "users") : NULL;
-    if (cJSON_IsArray(users) && cJSON_GetArraySize(users) > 0) {
-        cJSON      *first   = cJSON_GetArrayItem(users, 0);
-        const char *oid     = im_json_str(first, "open_id", NULL);
-        const char *uname   = im_json_str(first, "name", NULL);
-        if (oid && oid[0] != '\0') {
-            im_safe_copy(open_id_out, out_size, oid);
-            found = TRUE;
-            IM_LOGI(TAG, "resolved user name=%s open_id=%s", name, oid);
-
-            /* Store in cache */
-            if (s_user_cache_count < FS_USER_CACHE_MAX) {
-                im_safe_copy(s_user_cache[s_user_cache_count].name,
-                             sizeof(s_user_cache[0].name), uname ? uname : name);
-                im_safe_copy(s_user_cache[s_user_cache_count].open_id,
-                             sizeof(s_user_cache[0].open_id), oid);
-                s_user_cache_count++;
-            }
-        }
-    }
-
-    cJSON_Delete(root);
-    return found;
-}
-
-/**
- * @brief Build a JSON array string of non-bot mention targets from the Feishu
- *        mentions array.  Excludes the bot itself (matched by s_bot_open_id).
- *        Returns a heap-allocated string that the caller must im_free(), or
- *        NULL when there are no qualifying mentions.
- * @param[in] mentions cJSON array from the Feishu message event
- * @return heap-allocated JSON string, or NULL
- */
-static char *fs_build_mentions_json(cJSON *mentions)
-{
-    if (!cJSON_IsArray(mentions) || cJSON_GetArraySize(mentions) == 0) {
-        return NULL;
-    }
-
-    cJSON *arr = cJSON_CreateArray();
-    if (!arr) {
-        return NULL;
-    }
-
-    int added = 0;
-    cJSON *item = NULL;
-    cJSON_ArrayForEach(item, mentions) {
-        if (!cJSON_IsObject(item)) {
-            continue;
-        }
-        cJSON      *id_obj  = cJSON_GetObjectItem(item, "id");
-        const char *open_id = id_obj ? json_str2(id_obj, "open_id", NULL) : NULL;
-        const char *name    = json_str2(item, "name", NULL);
-
-        if (!open_id || open_id[0] == '\0') {
-            continue;
-        }
-        /* Skip the bot itself */
-        if (s_bot_open_id[0] != '\0' && strcmp(open_id, s_bot_open_id) == 0) {
-            continue;
-        }
-
-        cJSON *entry = cJSON_CreateObject();
-        if (!entry) {
-            continue;
-        }
-        cJSON_AddStringToObject(entry, "open_id", open_id);
-        cJSON_AddStringToObject(entry, "name", name ? name : "");
-        cJSON_AddItemToArray(arr, entry);
-        added++;
-    }
-
-    char *json_str = NULL;
-    if (added > 0) {
-        json_str = cJSON_PrintUnformatted(arr);
-    }
-    cJSON_Delete(arr);
-    return json_str;
-}
-
-static void publish_inbound_feishu(const char *chat_id, const char *text, const char *mentions_json)
+static void publish_inbound_feishu(const char *chat_id, const char *text)
 {
     if (!chat_id || !text || chat_id[0] == '\0' || text[0] == '\0') {
         return;
@@ -2486,14 +2171,10 @@ static void publish_inbound_feishu(const char *chat_id, const char *text, const 
     if (!in.content) {
         return;
     }
-    if (mentions_json && mentions_json[0] != '\0') {
-        in.mentions_json = im_strdup(mentions_json);
-    }
     OPERATE_RET rt = message_bus_push_inbound(&in);
     if (rt != OPRT_OK) {
         IM_LOGW(TAG, "push inbound failed rt=%d", rt);
         im_free(in.content);
-        im_free(in.mentions_json);
     }
 }
 
@@ -2616,26 +2297,6 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
     const char *chat_type    = json_str2(message, "chat_type", NULL);
     const char *msg_type     = json_str2(message, "message_type", NULL);
     const char *content_json = json_str2(message, "content", NULL);
-    const char *parent_id    = json_str2(message, "parent_id", NULL);
-    bool        is_group     = (chat_type && strcmp(chat_type, "group") == 0);
-    /* A reply (引用回复) to any message in the group is also accepted so that
-     * users can reply to the bot's own messages without having to @mention it
-     * explicitly.  parent_id is non-empty when the message is a quoted reply. */
-    bool        is_reply     = (parent_id && parent_id[0] != '\0');
-
-    cJSON *mentions = cJSON_GetObjectItem(message, "mentions");
-
-#if IM_FS_MENTION_FILTER_ENABLE
-    if (is_group) {
-        bool bot_mentioned = fs_is_bot_mentioned(mentions, content_json);
-        IM_LOGD(TAG, "[feishu] group filter: is_reply=%d bot_mentioned=%d", is_reply, bot_mentioned);
-        if (!is_reply && !bot_mentioned) {
-            IM_LOGD(TAG, "[feishu] group message without @bot or reply, filtered");
-            cJSON_Delete(root);
-            return;
-        }
-    }
-#endif
 
     char *text = im_calloc(1, 2048);
     if (!text) {
@@ -2643,9 +2304,6 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
         return;
     }
     extract_message_text(msg_type ? msg_type : "unknown", content_json, text, 2048);
-
-    fs_strip_bot_mention(text, mentions);
-
     if (text[0] == '\0') {
         IM_LOGW(TAG, "[feishu] message text empty msg_type=%s (unsupported or empty content)",
                   msg_type ? msg_type : "null");
@@ -2655,7 +2313,7 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
     }
 
     const char *reply_to = NULL;
-    if (is_group) {
+    if (chat_type && strcmp(chat_type, "group") == 0) {
         reply_to = chat_id;
     } else {
         reply_to = sender_open_id;
@@ -2667,17 +2325,10 @@ static void handle_event_payload(const uint8_t *payload, size_t payload_len)
         return;
     }
 
-    /* Extract non-bot mention targets for @-forward support */
-    char *mentions_json = fs_build_mentions_json(mentions);
-    if (mentions_json) {
-        IM_LOGI(TAG, "[feishu] mention targets: %s", mentions_json);
-    }
-
     IM_LOGI(TAG, "[feishu] inbound chat=%s type=%s len=%u", reply_to, msg_type ? msg_type : "?",
               (unsigned)strlen(text));
 
-    publish_inbound_feishu(reply_to, text, mentions_json);
-    im_free(mentions_json);
+    publish_inbound_feishu(reply_to, text);
     im_free(text);
     cJSON_Delete(root);
 }
@@ -3019,11 +2670,6 @@ OPERATE_RET feishu_bot_start(void)
         return rt;
     }
 
-    OPERATE_RET bot_rt = fs_fetch_bot_open_id();
-    if (bot_rt != OPRT_OK) {
-        IM_LOGW(TAG, "fetch bot open_id failed rt=%d, @mention filter may not work", bot_rt);
-    }
-
     if (s_ws_thread) {
         return OPRT_OK;
     }
@@ -3045,13 +2691,7 @@ OPERATE_RET feishu_bot_start(void)
     return OPRT_OK;
 }
 
-/**
- * @brief Internal: send a plain text message (msg_type=text) via Feishu API.
- * @param[in] chat_id target chat_id or open_id
- * @param[in] text    message text
- * @return OPRT_OK on success
- */
-static OPERATE_RET fs_send_plain_text(const char *chat_id, const char *text)
+OPERATE_RET feishu_send_message(const char *chat_id, const char *text)
 {
     if (!chat_id || !text) {
         return OPRT_INVALID_PARM;
@@ -3127,499 +2767,6 @@ static OPERATE_RET fs_send_plain_text(const char *chat_id, const char *text)
     im_free(resp);
 
     return ok ? OPRT_OK : OPRT_COM_ERROR;
-}
-
-/**
- * @brief Internal: send a rich-text (post) message with @mention at-nodes.
- * @param[in] chat_id       target chat_id or open_id
- * @param[in] text          message text body
- * @param[in] mentions      array of mention targets
- * @param[in] mention_count number of mention targets
- * @return OPRT_OK on success
- */
-static OPERATE_RET fs_send_rich_text(const char *chat_id, const char *text,
-                                     const feishu_mention_t *mentions, size_t mention_count)
-{
-    if (!chat_id || !text) {
-        return OPRT_INVALID_PARM;
-    }
-    if (s_app_id[0] == '\0' || s_app_secret[0] == '\0') {
-        return OPRT_NOT_FOUND;
-    }
-
-    if (!mentions || mention_count == 0) {
-        return fs_send_plain_text(chat_id, text);
-    }
-
-    OPERATE_RET rt = ensure_tenant_token();
-    if (rt != OPRT_OK) {
-        return rt;
-    }
-
-    const char *rid_type = (strncmp(chat_id, "oc_", 3) == 0) ? "chat_id" : "open_id";
-
-    /*
-     * Build a rich-text (post) message with inline @mention tags.
-     * Format: { "zh_cn": { "content": [[ {at}, {at}, ..., {text} ]] } }
-     */
-    cJSON *post_content = cJSON_CreateArray();
-    if (!post_content) {
-        return OPRT_MALLOC_FAILED;
-    }
-
-    cJSON *line = cJSON_CreateArray();
-    if (!line) {
-        cJSON_Delete(post_content);
-        return OPRT_MALLOC_FAILED;
-    }
-
-    for (size_t i = 0; i < mention_count && i < FS_MENTION_MAX; i++) {
-        if (!mentions[i].open_id || mentions[i].open_id[0] == '\0') {
-            continue;
-        }
-        cJSON *at_node = cJSON_CreateObject();
-        if (!at_node) {
-            continue;
-        }
-        cJSON_AddStringToObject(at_node, "tag", "at");
-        cJSON_AddStringToObject(at_node, "user_id", mentions[i].open_id);
-        if (mentions[i].name && mentions[i].name[0] != '\0') {
-            cJSON_AddStringToObject(at_node, "user_name", mentions[i].name);
-        }
-        cJSON_AddItemToArray(line, at_node);
-    }
-
-    cJSON *text_node = cJSON_CreateObject();
-    if (text_node) {
-        cJSON_AddStringToObject(text_node, "tag", "text");
-        cJSON_AddStringToObject(text_node, "text", text);
-        cJSON_AddItemToArray(line, text_node);
-    }
-
-    cJSON_AddItemToArray(post_content, line);
-
-    cJSON *lang_obj = cJSON_CreateObject();
-    if (!lang_obj) {
-        cJSON_Delete(post_content);
-        return OPRT_MALLOC_FAILED;
-    }
-    cJSON_AddItemToObject(lang_obj, "content", post_content);
-
-    cJSON *post_root = cJSON_CreateObject();
-    if (!post_root) {
-        cJSON_Delete(lang_obj);
-        return OPRT_MALLOC_FAILED;
-    }
-    cJSON_AddItemToObject(post_root, "zh_cn", lang_obj);
-
-    char *content_json = cJSON_PrintUnformatted(post_root);
-    cJSON_Delete(post_root);
-    if (!content_json) {
-        return OPRT_MALLOC_FAILED;
-    }
-
-    cJSON *body = cJSON_CreateObject();
-    if (!body) {
-        cJSON_free(content_json);
-        return OPRT_MALLOC_FAILED;
-    }
-    cJSON_AddStringToObject(body, "receive_id", chat_id);
-    cJSON_AddStringToObject(body, "msg_type", "post");
-    cJSON_AddStringToObject(body, "content", content_json);
-    char *body_json = cJSON_PrintUnformatted(body);
-    cJSON_Delete(body);
-    cJSON_free(content_json);
-    if (!body_json) {
-        return OPRT_MALLOC_FAILED;
-    }
-
-    char path[192] = {0};
-    snprintf(path, sizeof(path), "/open-apis/im/v1/messages?receive_id_type=%s", rid_type);
-
-    char *resp = im_malloc(FS_HTTP_RESP_BUF_SIZE);
-    if (!resp) {
-        cJSON_free(body_json);
-        return OPRT_MALLOC_FAILED;
-    }
-    memset(resp, 0, FS_HTTP_RESP_BUF_SIZE);
-
-    uint16_t    status  = 0;
-    const char *err_msg = NULL;
-    rt = fs_http_call(FS_HOST, path, "POST", body_json, s_tenant_token, resp, FS_HTTP_RESP_BUF_SIZE, &status);
-    bool ok = (rt == OPRT_OK && status == 200 && fs_response_ok(resp, &err_msg));
-    if (!ok) {
-        if (refresh_tenant_token() == OPRT_OK) {
-            memset(resp, 0, FS_HTTP_RESP_BUF_SIZE);
-            status = 0;
-            rt = fs_http_call(FS_HOST, path, "POST", body_json, s_tenant_token, resp, FS_HTTP_RESP_BUF_SIZE, &status);
-            ok = (rt == OPRT_OK && status == 200 && fs_response_ok(resp, &err_msg));
-        }
-    }
-
-    cJSON_free(body_json);
-
-    if (!ok) {
-        IM_LOGE(TAG, "feishu send(mentions) failed rid=%s rt=%d http=%u", chat_id, rt, status);
-    } else {
-        IM_LOGI(TAG, "feishu send(mentions) success rid=%s mentions=%u", chat_id, (unsigned)mention_count);
-    }
-    im_free(resp);
-
-    return ok ? OPRT_OK : OPRT_COM_ERROR;
-}
-
-/**
- * @brief Internal: parse mentions_json into feishu_mention_t array.
- * @param[in]  mentions_json  JSON array string, may be NULL
- * @param[out] mentions       output mention array
- * @param[out] open_id_bufs   backing storage for open_id strings
- * @param[out] name_bufs      backing storage for name strings
- * @param[in]  max_count      capacity of the arrays
- * @return number of valid mentions parsed
- */
-static int fs_parse_mentions_json(const char *mentions_json,
-                                  feishu_mention_t *mentions,
-                                  char open_id_bufs[][96],
-                                  char name_bufs[][64],
-                                  int max_count)
-{
-    if (!mentions_json || mentions_json[0] == '\0') {
-        return 0;
-    }
-    cJSON *arr = cJSON_Parse(mentions_json);
-    if (!cJSON_IsArray(arr) || cJSON_GetArraySize(arr) == 0) {
-        cJSON_Delete(arr);
-        return 0;
-    }
-    int count = cJSON_GetArraySize(arr);
-    if (count > max_count) {
-        count = max_count;
-    }
-    int valid = 0;
-    for (int i = 0; i < count; i++) {
-        cJSON      *entry   = cJSON_GetArrayItem(arr, i);
-        const char *open_id = json_str2(entry, "open_id", NULL);
-        const char *name    = json_str2(entry, "name", NULL);
-        if (!open_id || open_id[0] == '\0') {
-            continue;
-        }
-        strncpy(open_id_bufs[valid], open_id, 95);
-        open_id_bufs[valid][95] = '\0';
-        if (name) {
-            strncpy(name_bufs[valid], name, 63);
-            name_bufs[valid][63] = '\0';
-        } else {
-            name_bufs[valid][0] = '\0';
-        }
-        mentions[valid].open_id = open_id_bufs[valid];
-        mentions[valid].name    = name_bufs[valid];
-        valid++;
-    }
-    cJSON_Delete(arr);
-    return valid;
-}
-
-/**
- * @brief Resolve an @word token to a Feishu open_id and display name.
- *
- * Resolution order:
- *   1. "all"            → @all mention
- *   2. bot's own name   → bot's open_id (from s_bot_name / s_bot_open_id)
- *   3. arbitrary name   → Feishu user search API (with local cache)
- *
- * @param[in]  word        the word following '@' in the message text
- * @param[out] open_id_out resolved open_id buffer
- * @param[in]  out_size    size of open_id_out
- * @param[out] name_out    resolved display name buffer
- * @param[in]  name_size   size of name_out
- * @return TRUE if resolved, FALSE if unknown
- */
-static BOOL_T fs_resolve_mention_word(const char *word, char *open_id_out, size_t out_size,
-                                      char *name_out, size_t name_size)
-{
-    if (!word || word[0] == '\0') {
-        return FALSE;
-    }
-
-    if (strcasecmp(word, "all") == 0) {
-        im_safe_copy(open_id_out, out_size, "all");
-        im_safe_copy(name_out, name_size, "所有人");
-        return TRUE;
-    }
-
-    if (s_bot_name[0] != '\0' && strcasecmp(word, s_bot_name) == 0 && s_bot_open_id[0] != '\0') {
-        im_safe_copy(open_id_out, out_size, s_bot_open_id);
-        im_safe_copy(name_out, name_size, s_bot_name);
-        return TRUE;
-    }
-
-    if (fs_resolve_user_by_name(word, open_id_out, out_size)) {
-        im_safe_copy(name_out, name_size, word);
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
-/**
- * @brief Internal: scan text for @word patterns, resolve to mentions, strip from text.
- * @param[in,out] work          mutable text buffer (tokens stripped in-place)
- * @param[out]    mentions      output mention array (appended after start_idx)
- * @param[out]    open_id_bufs  backing storage for open_id strings
- * @param[out]    name_bufs     backing storage for name strings
- * @param[in]     start_idx     first free slot in the arrays
- * @param[in]     max_count     capacity of the arrays
- * @return total number of mentions (start_idx + newly resolved)
- */
-static int fs_scan_text_mentions(char *work,
-                                 feishu_mention_t *mentions,
-                                 char open_id_bufs[][96],
-                                 char name_bufs[][64],
-                                 int start_idx, int max_count)
-{
-    int count = start_idx;
-    char *p = work;
-    while (*p && count < max_count) {
-        char *at = strchr(p, '@');
-        if (!at) {
-            break;
-        }
-        char *word_start = at + 1;
-        char *word_end   = word_start;
-        while (*word_end && (isalnum((unsigned char)*word_end) || *word_end == '_' || *word_end == '-')) {
-            word_end++;
-        }
-        if (word_end == word_start) {
-            p = at + 1;
-            continue;
-        }
-        size_t word_len = (size_t)(word_end - word_start);
-        char   word[64] = {0};
-        if (word_len >= sizeof(word)) {
-            p = word_end;
-            continue;
-        }
-        memcpy(word, word_start, word_len);
-        word[word_len] = '\0';
-
-        if (fs_resolve_mention_word(word, open_id_bufs[count], sizeof(open_id_bufs[0]),
-                                    name_bufs[count], sizeof(name_bufs[0]))) {
-            mentions[count].open_id = open_id_bufs[count];
-            mentions[count].name    = name_bufs[count];
-            count++;
-
-            char *token_end = word_end;
-            if (*token_end == ' ') {
-                token_end++;
-            }
-            size_t tail_len = strlen(token_end);
-            memmove(at, token_end, tail_len + 1);
-        } else {
-            p = word_end;
-        }
-    }
-    return count;
-}
-
-/**
- * @brief Internal: strip @name tokens from text that match existing mentions.
- * @param[in,out] work      mutable text buffer
- * @param[in]     name_bufs mention name strings to match
- * @param[in]     open_id_bufs mention open_id strings (for @all detection)
- * @param[in]     count     number of mentions
- */
-static void fs_strip_mention_tokens(char *work, char name_bufs[][64],
-                                    char open_id_bufs[][96], int count)
-{
-    char *p = work;
-    while (*p) {
-        char *at = strchr(p, '@');
-        if (!at) {
-            break;
-        }
-        char *word_start = at + 1;
-        char *word_end   = word_start;
-        while (*word_end && (isalnum((unsigned char)*word_end) || *word_end == '_' || *word_end == '-')) {
-            word_end++;
-        }
-        if (word_end == word_start) {
-            p = at + 1;
-            continue;
-        }
-        size_t word_len = (size_t)(word_end - word_start);
-        char   word[64] = {0};
-        if (word_len < sizeof(word)) {
-            memcpy(word, word_start, word_len);
-            word[word_len] = '\0';
-        }
-        bool matched = false;
-        for (int i = 0; i < count && !matched; i++) {
-            if (name_bufs[i][0] != '\0' && strcasecmp(word, name_bufs[i]) == 0) {
-                matched = true;
-            }
-            if (!matched && strcasecmp(word, "all") == 0 &&
-                strcmp(open_id_bufs[i], "all") == 0) {
-                matched = true;
-            }
-        }
-        if (matched) {
-            char *token_end = word_end;
-            if (*token_end == ' ') {
-                token_end++;
-            }
-            memmove(at, token_end, strlen(token_end) + 1);
-        } else {
-            p = word_end;
-        }
-    }
-}
-
-/**
- * @brief Internal: trim leading/trailing spaces in-place.
- * @param[in,out] text mutable text buffer
- * @return pointer to trimmed start within the buffer
- */
-static char *fs_trim_spaces(char *text)
-{
-    while (*text == ' ') {
-        text++;
-    }
-    size_t len = strlen(text);
-    while (len > 0 && text[len - 1] == ' ') {
-        text[--len] = '\0';
-    }
-    return text;
-}
-
-/**
- * @brief Unified Feishu message send interface.
- *
- * Sends a plain-text message to the given chat or user.
- * The mentions_json parameter is accepted for API compatibility but ignored.
- *
- * @param[in] chat_id       target chat_id (oc_xxx) or open_id (ou_xxx)
- * @param[in] text          message text body
- * @param[in] mentions_json reserved, not used
- * @return OPRT_OK on success
- */
-OPERATE_RET feishu_send_message(const char *chat_id, const char *text, const char *mentions_json)
-{
-    (void)mentions_json;
-    return fs_send_plain_text(chat_id, text);
-}
-
-/**
- * @brief Fetch all members of a Feishu group chat.
- *
- * Calls GET /open-apis/im/v1/chats/{chat_id}/members (paged) and builds a
- * cJSON array:  [{"open_id":"ou_xxx","name":"张三"}, ...]
- * Caller must call cJSON_Delete() on the returned array.
- *
- * @param[in]  chat_id   Group chat ID (oc_…).
- * @param[out] out_json  Heap-allocated cJSON array on success.
- * @return OPRT_OK on success.
- */
-OPERATE_RET feishu_get_chat_members(const char *chat_id, cJSON **out_json)
-{
-    if (!chat_id || chat_id[0] == '\0' || !out_json) {
-        return OPRT_INVALID_PARM;
-    }
-    *out_json = NULL;
-
-    OPERATE_RET rt = ensure_tenant_token();
-    if (rt != OPRT_OK) {
-        return rt;
-    }
-
-    cJSON *members_arr = cJSON_CreateArray();
-    if (!members_arr) {
-        return OPRT_MALLOC_FAILED;
-    }
-
-    char *resp = (char *)im_malloc(FS_HTTP_RESP_BUF_SIZE);
-    if (!resp) {
-        cJSON_Delete(members_arr);
-        return OPRT_MALLOC_FAILED;
-    }
-
-    char page_token[256] = {0};
-    bool has_more        = true;
-
-    while (has_more) {
-        char path[384] = {0};
-        if (page_token[0] != '\0') {
-            snprintf(path, sizeof(path),
-                     "/open-apis/im/v1/chats/%s/members?member_id_type=open_id&page_size=100&page_token=%s",
-                     chat_id, page_token);
-        } else {
-            snprintf(path, sizeof(path),
-                     "/open-apis/im/v1/chats/%s/members?member_id_type=open_id&page_size=100",
-                     chat_id);
-        }
-
-        memset(resp, 0, FS_HTTP_RESP_BUF_SIZE);
-        uint16_t status = 0;
-        rt = fs_http_call(FS_HOST, path, "GET", NULL, s_tenant_token,
-                          resp, FS_HTTP_RESP_BUF_SIZE, &status);
-        if (rt != OPRT_OK || status != 200) {
-            IM_LOGW(TAG, "get_members failed rt=%d http=%u", rt, status);
-            break;
-        }
-
-        cJSON *root = cJSON_Parse(resp);
-        if (!root) {
-            break;
-        }
-
-        cJSON *data  = cJSON_GetObjectItem(root, "data");
-        cJSON *items = data ? cJSON_GetObjectItem(data, "items") : NULL;
-
-        if (cJSON_IsArray(items)) {
-            cJSON *item = NULL;
-            cJSON_ArrayForEach(item, items) {
-                const char *mid  = NULL;
-                const char *name = NULL;
-                cJSON      *v;
-
-                v = cJSON_GetObjectItem(item, "member_id");
-                if (cJSON_IsString(v) && v->valuestring) {
-                    mid = v->valuestring;
-                }
-                v = cJSON_GetObjectItem(item, "name");
-                if (cJSON_IsString(v) && v->valuestring) {
-                    name = v->valuestring;
-                }
-
-                if (mid && mid[0] != '\0') {
-                    cJSON *m = cJSON_CreateObject();
-                    if (m) {
-                        cJSON_AddStringToObject(m, "open_id", mid);
-                        if (name) {
-                            cJSON_AddStringToObject(m, "name", name);
-                        }
-                        cJSON_AddItemToArray(members_arr, m);
-                    }
-                }
-            }
-        }
-
-        has_more = false;
-        cJSON *hm = data ? cJSON_GetObjectItem(data, "has_more") : NULL;
-        if (cJSON_IsBool(hm) && cJSON_IsTrue(hm)) {
-            cJSON *pt = data ? cJSON_GetObjectItem(data, "page_token") : NULL;
-            if (cJSON_IsString(pt) && pt->valuestring && pt->valuestring[0] != '\0') {
-                snprintf(page_token, sizeof(page_token), "%s", pt->valuestring);
-                has_more = true;
-            }
-        }
-
-        cJSON_Delete(root);
-    }
-
-    im_free(resp);
-    *out_json = members_arr;
-    IM_LOGI(TAG, "get_members chat=%s count=%d", chat_id, cJSON_GetArraySize(members_arr));
-    return OPRT_OK;
 }
 
 OPERATE_RET feishu_set_app_id(const char *app_id)

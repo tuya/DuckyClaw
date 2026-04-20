@@ -1062,7 +1062,7 @@ static OPERATE_RET __acp_queue_reply_to_bus(const char *reply)
 static OPERATE_RET __acp_queue_timeout_to_bus(void)
 {
     static const char timeout_notice[] =
-        "System notification: OpenClaw did not return a final result within 180 seconds. "
+        "System notification: AI assistant did not return a final result within 180 seconds. "
         "Please tell the user that the previous ACP task timed out or the reply was lost, "
         "and suggest retrying if needed.";
 
@@ -1419,7 +1419,7 @@ static void acp_client_task(void *arg)
 {
     (void)arg;
     static const char timeout_fallback[] =
-        "OpenClaw task timed out after 120 seconds. Please retry if needed.";
+        "AI assistant task timed out after 180 seconds. Please retry if needed.";
 
     PR_INFO("acp client task started");
 

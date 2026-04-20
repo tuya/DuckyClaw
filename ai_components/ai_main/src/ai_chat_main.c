@@ -286,7 +286,7 @@ static void __ai_button_function_cb(char *name, TDL_BUTTON_TOUCH_EVENT_E event, 
 @brief Open button functionality for AI chat mode
 @return OPERATE_RET Operation result
 */
-static OPERATE_RET __ai_chat_mode_open_button(void *data)
+static OPERATE_RET __ai_chat_mode_open_button(void)
 {
     OPERATE_RET rt = OPRT_OK;
 
@@ -448,8 +448,7 @@ OPERATE_RET ai_chat_init(AI_CHAT_MODE_CFG_T *cfg)
     tal_event_subscribe(EVENT_MQTT_CONNECTED, "ai_chat_mode_start_task", __ai_chat_mode_start_task, SUBSCRIBE_TYPE_EMERGENCY);
 
 #if defined(ENABLE_BUTTON) && (ENABLE_BUTTON == 1)
-    // TUYA_CALL_ERR_LOG(__ai_chat_mode_open_button());
-    tal_event_subscribe(EVENT_MQTT_CONNECTED, "open_button_task", __ai_chat_mode_open_button, SUBSCRIBE_TYPE_NORMAL);
+    TUYA_CALL_ERR_LOG(__ai_chat_mode_open_button());
 #endif
     PR_DEBUG("ai chat mode init mode %d success", mode);
 

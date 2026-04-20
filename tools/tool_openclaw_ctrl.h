@@ -1,19 +1,14 @@
 /**
  * @file tool_openclaw_ctrl.h
- * @brief MCP tools: openclaw_ctrl + feishu_get_members.
+ * @brief MCP tools: openclaw_ctrl, tuyaclaw_ctrl, pc_ctrl.
  *
- * Two MCP tools are registered:
+ * Three MCP tools share one implementation: when ACP to the OpenClaw gateway
+ * is connected, `message` is injected via `acp_client_inject()`. The tool
+ * acknowledges send success; execution results are delivered asynchronously
+ * (see acp_client.c / message_bus).
  *
- *   feishu_get_members – fetches Feishu group member list (open_id + name).
- *     The agent calls this first when it needs to @mention someone.
- *
- *   openclaw_ctrl – sends a task notification to OpenClaw (ACP-first,
- *     Feishu fallback).  On the ACP path the tool only acknowledges the
- *     request; the actual execution result is injected asynchronously back
- *     into message_bus by acp_client.c.
- *
- * @version 2.0
- * @date 2026-03-19
+ * @version 2.1
+ * @date 2026-04-20
  * @copyright Copyright (c) Tuya Inc. All Rights Reserved.
  */
 
@@ -31,13 +26,12 @@ extern "C" {
  * --------------------------------------------------------------------------- */
 
 /**
- * @brief Register OpenClaw control and Feishu member MCP tools.
+ * @brief Register gateway PC control MCP tools.
  *
  * Registers:
- *   - "feishu_get_members" – returns Feishu group member list as JSON array
- *   - "openclaw_ctrl"      – sends task notification to OpenClaw (ACP-first)
- *   - "openclaw.ctrl"      – dot-namespace alias
- *   - "pc_ctrl"            – PC control alias
+ *   - "openclaw_ctrl"  – OpenClaw-branded task notification
+ *   - "tuyaclaw_ctrl"  – same logic, TuyaClaw naming
+ *   - "pc_ctrl"        – same logic, generic PC control naming
  *
  * @return OPRT_OK on success, error code on failure.
  */

@@ -109,11 +109,6 @@ static turn_state_t s_turn = {0};
 static char        *s_last_response      = NULL;
 static MUTEX_HANDLE s_last_response_lock = NULL;
 
-/* Mention targets from the current inbound turn (Feishu @-mentions).
- * Serialised JSON array, heap-allocated, freed at end of each turn. */
-static char        *s_turn_mentions_json = NULL;
-static MUTEX_HANDLE s_mentions_lock      = NULL;
-
 /* True while the inner loop is active (i.e. we are in a tool-use iteration).
  * ducky_claw_chat.c uses this to suppress mid-stream overflow flushes. */
 static volatile bool s_in_tool_loop = false;
@@ -399,26 +394,10 @@ static void agent_loop_task(void *arg)
         }
         if (!in.content || !s_total_prompt) {
             claw_free(in.content);
-            claw_free(in.mentions_json);
             continue;
         }
 
         app_im_set_target(in.channel, in.chat_id);
-
-        /* Save mention targets for this turn so the final reply can @-mention them */
-        if (s_mentions_lock) {
-            tal_mutex_lock(s_mentions_lock);
-            claw_free(s_turn_mentions_json);
-            s_turn_mentions_json = NULL;
-            if (in.mentions_json && in.mentions_json[0] != '\0') {
-                size_t mlen = strlen(in.mentions_json) + 1;
-                s_turn_mentions_json = claw_malloc(mlen);
-                if (s_turn_mentions_json) {
-                    memcpy(s_turn_mentions_json, in.mentions_json, mlen);
-                }
-            }
-            tal_mutex_unlock(s_mentions_lock);
-        }
 
         PR_INFO("===== AGENT TURN START channel=%s =====", in.channel);
         PR_DEBUG("user input: %.80s", in.content);
@@ -504,21 +483,7 @@ static void agent_loop_task(void *arg)
                 if (s_last_response && s_last_response_lock) {
                     tal_mutex_lock(s_last_response_lock);
                     if (s_last_response[0] != '\0') {
-                        char *mentions_copy = NULL;
-                        if (s_mentions_lock) {
-                            tal_mutex_lock(s_mentions_lock);
-                            if (s_turn_mentions_json) {
-                                size_t mlen = strlen(s_turn_mentions_json) + 1;
-                                mentions_copy = claw_malloc(mlen);
-                                if (mentions_copy) {
-                                    memcpy(mentions_copy, s_turn_mentions_json, mlen);
-                                }
-                            }
-                            tal_mutex_unlock(s_mentions_lock);
-                        }
-                        app_im_bot_send_message_with_mentions(s_last_response, mentions_copy);
-
-                        claw_free(mentions_copy);
+                        app_im_bot_send_message(s_last_response);
                     }
                     tal_mutex_unlock(s_last_response_lock);
                 }
@@ -535,7 +500,6 @@ static void agent_loop_task(void *arg)
         PR_INFO("===== AGENT TURN END iterations=%d =====", iteration + 1);
 
         claw_free(in.content);
-        claw_free(in.mentions_json);
     }
 }
 
@@ -597,7 +561,6 @@ OPERATE_RET agent_loop_init_evt_cb(void *data)
     }
     memset(s_last_response, 0, LAST_RESPONSE_MAX);
     TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_last_response_lock));
-    TUYA_CALL_ERR_RETURN(tal_mutex_create_init(&s_mentions_lock));
 
     ai_mcp_server_set_tool_exec_hook(__on_tool_executed, NULL);
 

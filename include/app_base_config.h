@@ -51,13 +51,8 @@ extern "C" {
 #define CLAW_FS_MOUNT_PATH         "/sdcard"
 #define CLAW_FS_ROOT_PATH_EMPTY    0
 #else
-#if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
 #define CLAW_FS_ROOT_PATH          ""
 #define CLAW_FS_ROOT_PATH_EMPTY    1
-#else
-#define CLAW_FS_ROOT_PATH          "/spiffs"
-#define CLAW_FS_ROOT_PATH_EMPTY    0
-#endif
 #endif
 
 /* Default config file paths */

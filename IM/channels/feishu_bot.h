@@ -32,19 +32,9 @@ OPERATE_RET feishu_bot_start(void);
  *
  * @param[in] chat_id       target chat_id (oc_xxx) or open_id (ou_xxx)
  * @param[in] text          message text body
- * @param[in] mentions_json optional pre-resolved mention JSON array (may be NULL)
  * @return OPRT_OK on success
  */
-OPERATE_RET feishu_send_message(const char *chat_id, const char *text, const char *mentions_json);
-
-/**
- * @brief Fetch all members of a Feishu group chat.
- *
- * @param[in]  chat_id   Group chat ID (oc_).
- * @param[out] out_json  Heap-allocated cJSON array; caller must cJSON_Delete().
- * @return OPRT_OK on success, error code on failure.
- */
-OPERATE_RET feishu_get_chat_members(const char *chat_id, cJSON **out_json);
+OPERATE_RET feishu_send_message(const char *chat_id, const char *text);
 
 /**
  * @brief Set feishu app_id credential

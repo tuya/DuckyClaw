@@ -53,8 +53,7 @@ static void __outbound_dispatch_task(void *arg)
 
             if (s_senders[i].send) {
                 s_senders[i].send(msg.chat_id,
-                                  msg.content,
-                                  msg.mentions_json);
+                                  msg.content);
             }
             dispatched = true;
             break;
@@ -65,7 +64,6 @@ static void __outbound_dispatch_task(void *arg)
         }
 
         claw_free(msg.content);
-        claw_free(msg.mentions_json);
     }
 }
 
@@ -121,7 +119,7 @@ static OPERATE_RET sys_bus_start_dispatch(void *data)
     if (s_outbound_thd) return OPRT_OK;
 
     THREAD_CFG_T cfg = {0};
-    cfg.stackDepth = 2560;
+    cfg.stackDepth = SYS_BUS_OUTBOUND_STACK_SIZE;
     cfg.priority   = THREAD_PRIO_1;
     cfg.thrdname   = "sys_bus_out";
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)

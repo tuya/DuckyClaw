@@ -43,17 +43,6 @@ OPERATE_RET app_im_init(void);
 OPERATE_RET app_im_bot_send_message(const char *message);
 
 /**
- * @brief Send a bot message with @mention targets (Feishu only).
- *
- * @param[in] message      Message text.
- * @param[in] mentions_json JSON array string of mention targets, e.g.
- *                          [{"open_id":"ou_xxx","name":"Jack"}].
- *                          Pass NULL or empty string to fall back to plain send.
- * @return OPRT_OK on success
- */
-OPERATE_RET app_im_bot_send_message_with_mentions(const char *message, const char *mentions_json);
-
-/**
  * @brief Set the target channel and chat_id.
  *
  * @param[in] channel Channel name.

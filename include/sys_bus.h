@@ -16,6 +16,7 @@
 #define __SYS_BUS_H__
 
 #include "tuya_cloud_types.h"
+#include "im_config.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -24,11 +25,12 @@ extern "C" {
 
 /* ---- channel name constants ---- */
 
-#define SYS_CHAN_TELEGRAM  "telegram"
-#define SYS_CHAN_DISCORD   "discord"
-#define SYS_CHAN_FEISHU    "feishu"
-#define SYS_CHAN_WEIXIN    "weixin"
-#define SYS_CHAN_WS        "ws"
+#define SYS_CHAN_OFF       IM_CHAN_OFF
+#define SYS_CHAN_TELEGRAM  IM_CHAN_TELEGRAM
+#define SYS_CHAN_DISCORD   IM_CHAN_DISCORD
+#define SYS_CHAN_FEISHU    IM_CHAN_FEISHU
+#define SYS_CHAN_WEIXIN    IM_CHAN_WEIXIN
+#define SYS_CHAN_WS        IM_CHAN_WS
 #define SYS_CHAN_ACP       "acp"
 #define SYS_CHAN_CRON      "cron"
 #define SYS_CHAN_HEARTBEAT "heartbeat"
@@ -40,7 +42,6 @@ typedef struct {
     char  channel[16];       /**< message source channel name */
     char  chat_id[96];       /**< conversation ID */
     char *content;           /**< message content (heap-allocated, ownership transferred) */
-    char *mentions_json;     /**< @-mention JSON (heap-allocated, may be NULL) */
 } sys_msg_t;
 
 /* ---- outbound sender callback ---- */
@@ -49,12 +50,10 @@ typedef struct {
  * @brief Channel sender callback signature.
  * @param chat_id  target conversation ID
  * @param text     message text
- * @param extra    additional data (e.g. mentions_json), may be NULL
  * @return OPRT_OK on success
  */
 typedef OPERATE_RET (*sys_channel_send_fn)(const char *chat_id,
-                                           const char *text,
-                                           const char *extra);
+                                           const char *text);
 
 /* ---- bus API ---- */
 

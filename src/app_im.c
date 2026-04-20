@@ -108,32 +108,28 @@ const char *app_im_get_chat_id(void)
 
 /* ---- sys_bus sender callbacks (one per IM channel) ---- */
 
-static OPERATE_RET __send_telegram(const char *chat_id, const char *text, const char *extra)
+static OPERATE_RET __send_telegram(const char *chat_id, const char *text)
 {
-    (void)extra;
     return telegram_send_message(chat_id, text ? text : "");
 }
 
-static OPERATE_RET __send_discord(const char *chat_id, const char *text, const char *extra)
+static OPERATE_RET __send_discord(const char *chat_id, const char *text)
 {
-    (void)extra;
     return discord_send_message(chat_id, text ? text : "");
 }
 
-static OPERATE_RET __send_feishu(const char *chat_id, const char *text, const char *extra)
+static OPERATE_RET __send_feishu(const char *chat_id, const char *text)
 {
-    return feishu_send_message(chat_id, text ? text : "", extra);
+    return feishu_send_message(chat_id, text ? text : "");
 }
 
-static OPERATE_RET __send_weixin(const char *chat_id, const char *text, const char *extra)
+static OPERATE_RET __send_weixin(const char *chat_id, const char *text)
 {
-    (void)extra;
     return weixin_send_message(chat_id, text ? text : "");
 }
 
-static OPERATE_RET __send_ws(const char *chat_id, const char *text, const char *extra)
+static OPERATE_RET __send_ws(const char *chat_id, const char *text)
 {
-    (void)extra;
     if (!__app_im_ws_token_valid()) {
         PR_WARN("ws outbound dropped: CLAW_WS_AUTH_TOKEN is empty");
         return OPRT_COM_ERROR;
@@ -162,12 +158,10 @@ static void __im_bridge_task(void *arg)
         strncpy(io.channel, im.channel, sizeof(io.channel) - 1);
         strncpy(io.chat_id, im.chat_id, sizeof(io.chat_id) - 1);
         io.content       = im.content;        /* pointer ownership transfer */
-        io.mentions_json  = im.mentions_json;  /* pointer ownership transfer */
 
         if (sys_bus_push_inbound(&io) != OPRT_OK) {
             PR_ERR("app_im: sys_bus_push_inbound failed");
             claw_free(io.content);
-            claw_free(io.mentions_json);
         }
     }
 }
@@ -176,7 +170,7 @@ static OPERATE_RET start_im_bridge(void)
 {
     if (s_bridge_thd) return OPRT_OK;
     THREAD_CFG_T cfg = {0};
-    cfg.stackDepth = 2 * 1024;
+    cfg.stackDepth = IM_BRIDGE_STACK_SIZE;
     cfg.priority   = THREAD_PRIO_1;
     cfg.thrdname   = "im_bridge";
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
@@ -284,8 +278,7 @@ OPERATE_RET app_im_init(void)
 
 static OPERATE_RET app_im_bot_send_message_to(const char *channel,
                                        const char *chat_id,
-                                       const char *message,
-                                       const char *mentions_json)
+                                       const char *message)
 {
     const char *target_channel = __app_im_map_channel(channel);
     const char *target_chat_id = chat_id;
@@ -329,30 +322,14 @@ static OPERATE_RET app_im_bot_send_message_to(const char *channel,
     memset(out.content, 0, strlen(message) + 1);
     strncpy(out.content, message, strlen(message) + 1);
 
-    if (mentions_json && mentions_json[0] != '\0') {
-        size_t mlen = strlen(mentions_json) + 1;
-        out.mentions_json = claw_malloc(mlen);
-        if (!out.mentions_json) {
-            claw_free(out.content);
-            return OPRT_MALLOC_FAILED;
-        }
-        memcpy(out.mentions_json, mentions_json, mlen);
-    }
-
     OPERATE_RET rt = sys_bus_push_outbound(&out);
     if (rt != OPRT_OK) {
         claw_free(out.content);
-        claw_free(out.mentions_json);
     }
     return rt;
 }
 
-OPERATE_RET app_im_bot_send_message_with_mentions(const char *message, const char *mentions_json)
-{
-    return app_im_bot_send_message_to(NULL, NULL, message, mentions_json);
-}
-
 OPERATE_RET app_im_bot_send_message(const char *message)
 {
-    return app_im_bot_send_message_to(NULL, NULL, message, NULL);
+    return app_im_bot_send_message_to(NULL, NULL, message);
 }

@@ -1,5 +1,17 @@
 menu "configure app (DuckyClaw) "
 
+    config SYS_BUS_OUTBOUND_STACK_SIZE
+        int "SYS bus outbound thread stack size (bytes)"
+        default 8192
+        help
+            Stack size in bytes for the SYS bus outbound thread (default 8*1024).
+
+    config IM_BRIDGE_STACK_SIZE
+        int "IM bridge thread stack size (bytes)"
+        default 4096
+        help
+            Stack size in bytes for the IM bridge thread (default 4*1024).
+
 rsource "./ai_components/Kconfig"
 rsource "./cron_service/Kconfig"
 rsource "./gateway/Kconfig"
