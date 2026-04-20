@@ -70,9 +70,6 @@ OPERATE_RET sys_bus_init(void);
 OPERATE_RET sys_bus_register_sender(const char *channel_name,
                                     sys_channel_send_fn send_fn);
 
-/** Start the outbound dispatch thread (call after all senders are registered) */
-OPERATE_RET sys_bus_start_dispatch(void);
-
 /** Push an inbound message (called by channels upon receiving a message) */
 OPERATE_RET sys_bus_push_inbound(const sys_msg_t *msg);
 

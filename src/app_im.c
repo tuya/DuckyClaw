@@ -182,8 +182,13 @@ static OPERATE_RET start_im_bridge(void)
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
     cfg.psram_mode = 1;
 #endif
-    return tal_thread_create_and_start(&s_bridge_thd, NULL, NULL,
+    OPERATE_RET rt = tal_thread_create_and_start(&s_bridge_thd, NULL, NULL,
                                        __im_bridge_task, NULL, &cfg);
+    if (rt != OPRT_OK) {
+        PR_ERR("app_im: start im bridge thread failed: %d", rt);
+        return rt;
+    }
+    return rt;
 }
 
 /* ---- Register all IM senders with sys_bus ---- */

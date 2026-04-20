@@ -3494,63 +3494,18 @@ static char *fs_trim_spaces(char *text)
 /**
  * @brief Unified Feishu message send interface.
  *
- * Automatically detects @mention targets from two sources:
- *   1. mentions_json — pre-resolved mention targets from inbound context
- *   2. text scanning — scans text for @word patterns and resolves them
- *
- * If any mentions are detected, sends rich-text (post) with @at nodes;
- * otherwise sends plain text.
+ * Sends a plain-text message to the given chat or user.
+ * The mentions_json parameter is accepted for API compatibility but ignored.
  *
  * @param[in] chat_id       target chat_id (oc_xxx) or open_id (ou_xxx)
  * @param[in] text          message text body
- * @param[in] mentions_json optional pre-resolved mention JSON (may be NULL)
+ * @param[in] mentions_json reserved, not used
  * @return OPRT_OK on success
  */
 OPERATE_RET feishu_send_message(const char *chat_id, const char *text, const char *mentions_json)
 {
-    if (!chat_id || !text) {
-        return OPRT_INVALID_PARM;
-    }
-    if (s_app_id[0] == '\0' || s_app_secret[0] == '\0') {
-        return OPRT_NOT_FOUND;
-    }
-
-    feishu_mention_t mentions[FS_MENTION_MAX];
-    char             open_id_bufs[FS_MENTION_MAX][96];
-    char             name_bufs[FS_MENTION_MAX][64];
-    int              total = 0;
-
-    /* Source 1: pre-resolved mentions from inbound message context */
-    total = fs_parse_mentions_json(mentions_json, mentions, open_id_bufs, name_bufs, FS_MENTION_MAX);
-
-    /* Working copy of text for @token scanning and stripping */
-    size_t text_len = strlen(text);
-    char  *work     = im_malloc(text_len + 1);
-    if (!work) {
-        return OPRT_MALLOC_FAILED;
-    }
-    memcpy(work, text, text_len + 1);
-
-    /* Strip @name tokens that match pre-resolved mentions */
-    if (total > 0) {
-        fs_strip_mention_tokens(work, name_bufs, open_id_bufs, total);
-    }
-
-    /* Source 2: scan remaining text for @word patterns */
-    total = fs_scan_text_mentions(work, mentions, open_id_bufs, name_bufs, total, FS_MENTION_MAX);
-
-    char *body = fs_trim_spaces(work);
-
-    OPERATE_RET rt;
-    if (total > 0) {
-        IM_LOGI(TAG, "send with %d mention(s) to %s", total, chat_id);
-        rt = fs_send_rich_text(chat_id, body, mentions, (size_t)total);
-    } else {
-        rt = fs_send_plain_text(chat_id, body);
-    }
-
-    im_free(work);
-    return rt;
+    (void)mentions_json;
+    return fs_send_plain_text(chat_id, text);
 }
 
 /**

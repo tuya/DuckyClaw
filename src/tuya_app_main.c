@@ -74,7 +74,7 @@ tuya_iot_license_t license;
 
 static uint8_t _need_reset = 0;
 static char kv_product_id[32] = {0};
-extern void tuya_app_cli_init(void);
+extern void app_cli_init(void);
 /**
  * @brief user defined log output api, in this demo, it will use uart0 as log-tx
  *
@@ -343,7 +343,8 @@ void user_main(void)
     tal_time_service_init();
 // #if !defined(PLATFORM_ESP32)
     tal_cli_init();
-    tuya_app_cli_init();
+    tuya_authorize_init();
+    app_cli_init();
 // #endif
 
     reset_netconfig_start();

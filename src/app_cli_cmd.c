@@ -1420,7 +1420,7 @@ static void cmd_fs_stat(int argc, char *argv[])
     BOOL_T      exists = FALSE;
     TUYA_DIR    dir    = NULL;
     bool        is_dir = false;
-    uint32_t    mode  = 0;
+    unsigned int    mode  = 0;
     int         size;
     OPERATE_RET rt;
     OPERATE_RET mode_rt;
@@ -2172,44 +2172,44 @@ static void cmd_cfg_clear_proxy(int argc, char *argv[])
  * Command table
  * --------------------------------------------------------------------------- */
 static cli_cmd_t s_cli_cmd[] = {
-    {.name = "help",                  .help = "Show all CLI commands",                  .func = cmd_help},
+//     {.name = "help",                  .help = "Show all CLI commands",                  .func = cmd_help},
 
-    {.name = "sys_status",            .help = "Show device runtime status",             .func = cmd_sys_status},
-    {.name = "sys_heap",              .help = "Show free heap and PSRAM",               .func = cmd_sys_heap},
-    {.name = "sys_thread",            .help = "Dump all thread watermark info",         .func = cmd_sys_thread},
-    {.name = "sys_uptime",            .help = "Show uptime in readable format",         .func = cmd_sys_uptime},
-    {.name = "sys_tick",              .help = "Show system tick and uptime ms",         .func = cmd_sys_tick},
-    {.name = "sys_version",           .help = "Show app, SDK, and platform version",    .func = cmd_sys_version},
-    {.name = "sys_log_level",         .help = "Get or set log level",                   .func = cmd_sys_log_level},
-    {.name = "sys_reboot",            .help = "Reboot device",                          .func = cmd_sys_reboot},
-    {.name = "sys_random",            .help = "Generate random number",                 .func = cmd_sys_random},
-    {.name = "sys_timer_count",       .help = "Show active software timers",            .func = cmd_sys_timer_count},
-    {.name = "sys_iot_start",         .help = "Start Tuya IoT client",                  .func = cmd_sys_iot_start},
-    {.name = "sys_iot_stop",          .help = "Stop Tuya IoT client",                   .func = cmd_sys_iot_stop},
-    {.name = "sys_iot_restart",       .help = "Restart Tuya IoT client",                .func = cmd_sys_iot_restart},
-    {.name = "sys_iot_reset",         .help = "Reset Tuya IoT activation",              .func = cmd_sys_iot_reset},
-    {.name = "sys_netmgr",            .help = "Pass through to netmgr CLI",             .func = cmd_sys_netmgr},
-    {.name = "sys_exec",              .help = "Execute shell command on Linux",         .func = cmd_sys_exec},
-    {.name = "sys_switch",            .help = "Report demo switch datapoint",           .func = cmd_sys_switch},
-#if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
-    {.name = "sys_wifi_info",         .help = "Show current WiFi SSID/BSSID/RSSI",      .func = cmd_sys_wifi_info},
-    {.name = "sys_wifi_scan",         .help = "Scan nearby WiFi APs",                   .func = cmd_sys_wifi_scan},
-#endif
+//     {.name = "sys_status",            .help = "Show device runtime status",             .func = cmd_sys_status},
+//     {.name = "sys_heap",              .help = "Show free heap and PSRAM",               .func = cmd_sys_heap},
+//     {.name = "sys_thread",            .help = "Dump all thread watermark info",         .func = cmd_sys_thread},
+//     {.name = "sys_uptime",            .help = "Show uptime in readable format",         .func = cmd_sys_uptime},
+//     {.name = "sys_tick",              .help = "Show system tick and uptime ms",         .func = cmd_sys_tick},
+//     {.name = "sys_version",           .help = "Show app, SDK, and platform version",    .func = cmd_sys_version},
+//     {.name = "sys_log_level",         .help = "Get or set log level",                   .func = cmd_sys_log_level},
+//     {.name = "sys_reboot",            .help = "Reboot device",                          .func = cmd_sys_reboot},
+//     {.name = "sys_random",            .help = "Generate random number",                 .func = cmd_sys_random},
+//     {.name = "sys_timer_count",       .help = "Show active software timers",            .func = cmd_sys_timer_count},
+//     {.name = "sys_iot_start",         .help = "Start Tuya IoT client",                  .func = cmd_sys_iot_start},
+//     {.name = "sys_iot_stop",          .help = "Stop Tuya IoT client",                   .func = cmd_sys_iot_stop},
+//     {.name = "sys_iot_restart",       .help = "Restart Tuya IoT client",                .func = cmd_sys_iot_restart},
+//     {.name = "sys_iot_reset",         .help = "Reset Tuya IoT activation",              .func = cmd_sys_iot_reset},
+//     {.name = "sys_netmgr",            .help = "Pass through to netmgr CLI",             .func = cmd_sys_netmgr},
+//     {.name = "sys_exec",              .help = "Execute shell command on Linux",         .func = cmd_sys_exec},
+//     {.name = "sys_switch",            .help = "Report demo switch datapoint",           .func = cmd_sys_switch},
+// #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
+//     {.name = "sys_wifi_info",         .help = "Show current WiFi SSID/BSSID/RSSI",      .func = cmd_sys_wifi_info},
+//     {.name = "sys_wifi_scan",         .help = "Scan nearby WiFi APs",                   .func = cmd_sys_wifi_scan},
+// #endif
 
-    {.name = "fs_ls",                 .help = "List directory tree (depth <= 3)",      .func = cmd_fs_ls},
-    {.name = "fs_stat",               .help = "Show file or directory metadata",        .func = cmd_fs_stat},
-    {.name = "fs_cat",                .help = "Print text file",                        .func = cmd_fs_cat},
-    {.name = "fs_hexdump",            .help = "Hex dump file",                          .func = cmd_fs_hexdump},
-    {.name = "fs_write",              .help = "Overwrite file",                         .func = cmd_fs_write},
-    {.name = "fs_append",             .help = "Append file",                            .func = cmd_fs_append},
-    {.name = "fs_rm",                 .help = "Remove file or directory",               .func = cmd_fs_rm},
-    {.name = "fs_mkdir",              .help = "Create directory",                       .func = cmd_fs_mkdir},
-    {.name = "fs_mv",                 .help = "Rename or move path",                    .func = cmd_fs_mv},
+//     {.name = "fs_ls",                 .help = "List directory tree (depth <= 3)",      .func = cmd_fs_ls},
+//     {.name = "fs_stat",               .help = "Show file or directory metadata",        .func = cmd_fs_stat},
+//     {.name = "fs_cat",                .help = "Print text file",                        .func = cmd_fs_cat},
+//     {.name = "fs_hexdump",            .help = "Hex dump file",                          .func = cmd_fs_hexdump},
+//     {.name = "fs_write",              .help = "Overwrite file",                         .func = cmd_fs_write},
+//     {.name = "fs_append",             .help = "Append file",                            .func = cmd_fs_append},
+//     {.name = "fs_rm",                 .help = "Remove file or directory",               .func = cmd_fs_rm},
+//     {.name = "fs_mkdir",              .help = "Create directory",                       .func = cmd_fs_mkdir},
+//     {.name = "fs_mv",                 .help = "Rename or move path",                    .func = cmd_fs_mv},
 
-    {.name = "kv_get",                .help = "Read a KV value",                        .func = cmd_kv_get},
-    {.name = "kv_set",                .help = "Write a string KV value",                .func = cmd_kv_set},
-    {.name = "kv_del",                .help = "Delete a KV entry",                      .func = cmd_kv_del},
-    {.name = "kv_list",               .help = "List all KV entries",                    .func = cmd_kv_list},
+//     {.name = "kv_get",                .help = "Read a KV value",                        .func = cmd_kv_get},
+//     {.name = "kv_set",                .help = "Write a string KV value",                .func = cmd_kv_set},
+//     {.name = "kv_del",                .help = "Delete a KV entry",                      .func = cmd_kv_del},
+//     {.name = "kv_list",               .help = "List all KV entries",                    .func = cmd_kv_list},
 
     {.name = "cfg_show",              .help = "Show effective config",                  .func = cmd_cfg_show},
     {.name = "cfg_reset",             .help = "Clear all config KV overrides",          .func = cmd_cfg_reset},
@@ -2238,12 +2238,12 @@ static cli_cmd_t s_cli_cmd[] = {
  * @brief Register all unified CLI commands.
  * @return none
  */
-void tuya_app_cli_init(void)
+void app_cli_init(void)
 {
     OPERATE_RET rt = tal_cli_cmd_register(s_cli_cmd, sizeof(s_cli_cmd) / sizeof(s_cli_cmd[0]));
 
     if (rt != OPRT_OK) {
         PR_ERR("tal_cli_cmd_register failed: %d", rt);
     }
-    PR_DEBUG("tuya_app_cli_init: tal_cli_cmd_register success");
+    PR_DEBUG("app_cli_init: tal_cli_cmd_register success");
 }

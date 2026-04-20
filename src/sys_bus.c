@@ -26,13 +26,14 @@ static sys_sender_entry_t s_senders[SYS_BUS_MAX_SENDERS];
 static int                s_sender_count = 0;
 
 /* ---- queues ---- */
-
 static QUEUE_HANDLE  s_inbound_queue  = NULL;
 static QUEUE_HANDLE  s_outbound_queue = NULL;
 
 /* ---- outbound dispatch thread ---- */
-
 static THREAD_HANDLE s_outbound_thd = NULL;
+
+/* ---- outbound dispatch task ---- */
+static OPERATE_RET sys_bus_start_dispatch(void *data);
 
 static void __outbound_dispatch_task(void *arg)
 {
@@ -91,12 +92,7 @@ OPERATE_RET sys_bus_init(void)
 
     s_sender_count = 0;
 
-    rt = sys_bus_start_dispatch();
-    if (rt != OPRT_OK) {
-        PR_ERR("sys_bus_start_dispatch failed rt:%d", rt);
-        return rt;
-    }
-    // tal_event_subscribe(EVENT_MQTT_CONNECTED, "sys_bus_start_dispatch", sys_bus_start_dispatch, SUBSCRIBE_TYPE_NORMAL);
+    tal_event_subscribe(EVENT_MQTT_CONNECTED, "sys_bus_start_dispatch", sys_bus_start_dispatch, SUBSCRIBE_TYPE_NORMAL);
     PR_INFO("sys_bus initialized");
     return rt;
 }
@@ -119,19 +115,25 @@ OPERATE_RET sys_bus_register_sender(const char *channel_name,
     return OPRT_OK;
 }
 
-OPERATE_RET sys_bus_start_dispatch(void)
+static OPERATE_RET sys_bus_start_dispatch(void *data)
 {
+    (void)data;
     if (s_outbound_thd) return OPRT_OK;
 
     THREAD_CFG_T cfg = {0};
-    cfg.stackDepth = 1536;
+    cfg.stackDepth = 2560;
     cfg.priority   = THREAD_PRIO_1;
     cfg.thrdname   = "sys_bus_out";
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
     cfg.psram_mode = 1;
 #endif
-    return tal_thread_create_and_start(&s_outbound_thd, NULL, NULL,
+    OPERATE_RET rt = tal_thread_create_and_start(&s_outbound_thd, NULL, NULL,
                                        __outbound_dispatch_task, NULL, &cfg);
+    if (rt != OPRT_OK) {
+        PR_ERR("sys_bus: start outbound dispatch thread failed: %d", rt);
+        return rt;
+    }
+    return rt;
 }
 
 OPERATE_RET sys_bus_push_inbound(const sys_msg_t *msg)
