@@ -25,6 +25,10 @@
 ***********************************************************/
 #define INBOUND_POLL_MS  100
 
+#ifndef IM_BRIDGE_STACK_SIZE
+#define IM_BRIDGE_STACK_SIZE (4 * 1024)
+#endif
+
 /***********************************************************
 ***********************typedef define***********************
 ***********************************************************/
@@ -161,7 +165,7 @@ static void __im_bridge_task(void *arg)
 
         if (sys_bus_push_inbound(&io) != OPRT_OK) {
             PR_ERR("app_im: sys_bus_push_inbound failed");
-            claw_free(io.content);
+            im_free(io.content);
         }
     }
 }
@@ -261,7 +265,7 @@ static OPERATE_RET app_im_init_evt_cb(void *data)
 
     if (rt != OPRT_OK) {
         PR_ERR("IM channel '%s' initialization failed rt:%d", mode, rt);
-        return rt;
+        /* Don't return early — still register senders (WS/ACP) and start bridge */
     }
 
     __register_im_senders();

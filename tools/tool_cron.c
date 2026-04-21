@@ -218,6 +218,7 @@ static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties
              tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec,
              tz_label, (long long)now);
 
+    /* ai_mcp_return_value_set_str() copies via mm_strdup, safe to free after */
     ai_mcp_return_value_set_str(ret_val, result);
     PR_DEBUG("get_current_time: epoch=%lld local=%04d-%02d-%02d %02d:%02d:%02d %s",
              (long long)now,
@@ -400,6 +401,7 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
                  "- possible file write failure. Please retry.",
                  job.name, job.id);
         PR_ERR("cron_add verify failed: %s", err_msg);
+        /* ai_mcp_return_value_set_str() copies via mm_strdup, safe to free after */
         ai_mcp_return_value_set_str(ret_val, err_msg);
         claw_free(err_msg);
         return OPRT_FILE_WRITE_FAILED;
@@ -435,6 +437,7 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
                  job.delete_after_run ? " Will be deleted after firing." : "");
     }
 
+    /* ai_mcp_return_value_set_str() copies via mm_strdup, safe to free after */
     ai_mcp_return_value_set_str(ret_val, result);
     PR_DEBUG("cron_add: %s", result);
     claw_free(result);

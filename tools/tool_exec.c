@@ -1,5 +1,17 @@
-#include "tool_exec.h"
+/**
+ * @file tool_exec.c
+ * @brief MCP exec/system tools for DuckyClaw
+ * @version 0.2
+ * @date 2026   -04-20
+ *
+ * @copyright Copyright (c) 2021-2026 Tuya Inc. All Rights Reserved.
+ *
+ * Implements exec, get_system_info, list_devices, handle_command MCP tools
+ * using the ai_mcp_server.h interface.
+ */
 
+#include "tool_exec.h"
+#include "app_base_config.h"
 #include "ai_mcp_server.h"
 #include "cJSON.h"
 #include "tal_api.h"

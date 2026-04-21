@@ -15,6 +15,10 @@
 #define SYS_BUS_QUEUE_LEN     10
 #define SYS_BUS_MAX_SENDERS   12
 
+#ifndef SYS_BUS_OUTBOUND_STACK_SIZE
+#define SYS_BUS_OUTBOUND_STACK_SIZE (8 * 1024)
+#endif
+
 /* ---- outbound route table ---- */
 
 typedef struct {
@@ -24,6 +28,7 @@ typedef struct {
 
 static sys_sender_entry_t s_senders[SYS_BUS_MAX_SENDERS];
 static int                s_sender_count = 0;
+static MUTEX_HANDLE       s_sender_mutex = NULL;
 
 /* ---- queues ---- */
 static QUEUE_HANDLE  s_inbound_queue  = NULL;
@@ -47,19 +52,19 @@ static void __outbound_dispatch_task(void *arg)
         if (!msg.content) continue;
 
         /* look up matching channel in route table */
-        bool dispatched = false;
+        sys_channel_send_fn send_fn = NULL;
+        tal_mutex_lock(s_sender_mutex);
         for (int i = 0; i < s_sender_count; i++) {
-            if (strcmp(msg.channel, s_senders[i].name) != 0) continue;
-
-            if (s_senders[i].send) {
-                s_senders[i].send(msg.chat_id,
-                                  msg.content);
+            if (strcmp(msg.channel, s_senders[i].name) == 0) {
+                send_fn = s_senders[i].send;
+                break;
             }
-            dispatched = true;
-            break;
         }
+        tal_mutex_unlock(s_sender_mutex);
 
-        if (!dispatched) {
+        if (send_fn) {
+            send_fn(msg.chat_id, msg.content);
+        } else {
             PR_WARN("sys_bus: no sender for channel '%s', dropping", msg.channel);
         }
 
@@ -90,6 +95,18 @@ OPERATE_RET sys_bus_init(void)
 
     s_sender_count = 0;
 
+    if (!s_sender_mutex) {
+        rt = tal_mutex_create_init(&s_sender_mutex);
+        if (rt != OPRT_OK) {
+            PR_ERR("sys_bus: create sender mutex failed: %d", rt);
+            tal_queue_free(s_outbound_queue);
+            s_outbound_queue = NULL;
+            tal_queue_free(s_inbound_queue);
+            s_inbound_queue = NULL;
+            return rt;
+        }
+    }
+
     tal_event_subscribe(EVENT_MQTT_CONNECTED, "sys_bus_start_dispatch", sys_bus_start_dispatch, SUBSCRIBE_TYPE_NORMAL);
     PR_INFO("sys_bus initialized");
     return rt;
@@ -99,7 +116,10 @@ OPERATE_RET sys_bus_register_sender(const char *channel_name,
                                     sys_channel_send_fn send_fn)
 {
     if (!channel_name || !send_fn) return OPRT_INVALID_PARM;
+
+    tal_mutex_lock(s_sender_mutex);
     if (s_sender_count >= SYS_BUS_MAX_SENDERS) {
+        tal_mutex_unlock(s_sender_mutex);
         PR_ERR("sys_bus: sender table full");
         return OPRT_EXCEED_UPPER_LIMIT;
     }
@@ -108,6 +128,7 @@ OPERATE_RET sys_bus_register_sender(const char *channel_name,
             sizeof(s_senders[0].name) - 1);
     s_senders[s_sender_count].send = send_fn;
     s_sender_count++;
+    tal_mutex_unlock(s_sender_mutex);
 
     PR_INFO("sys_bus: registered sender '%s'", channel_name);
     return OPRT_OK;
@@ -137,7 +158,7 @@ static OPERATE_RET sys_bus_start_dispatch(void *data)
 OPERATE_RET sys_bus_push_inbound(const sys_msg_t *msg)
 {
     if (!s_inbound_queue || !msg) return OPRT_INVALID_PARM;
-    return tal_queue_post(s_inbound_queue, (void *)msg, 1000);
+    return tal_queue_post(s_inbound_queue, (void *)msg, 10000);
 }
 
 OPERATE_RET sys_bus_pop_inbound(sys_msg_t *msg, uint32_t timeout_ms)
