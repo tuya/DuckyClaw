@@ -173,8 +173,8 @@ jobs:
           print(json.dumps({
               "tag_name": os.environ["TAG_NAME"],
               "target_commitish": os.environ["TARGET_COMMITISH"],
-              "name": f"Release {os.environ[\"TAG_NAME\"]}",
-              "body": os.environ["TAG_NAME"],
+              "name": "Release " + os.environ["TAG_NAME"],
+              "body": "See release notes at https://github.com/tuya/DuckyClaw/releases/tag/" + os.environ["TAG_NAME"],
               "draft": False,
               "prerelease": False,
           }))'
