@@ -1,6 +1,30 @@
+<div align="center">
+
+<img src="https://images.tuyacn.com/fe-static/docs/img/cc7ba9a9-6dd3-4569-aed7-d5694191e659.png" alt="TClaw" width="100%">
+
 # TClaw
 
-[English](README.md) | **中文**
+**你的自主 AI 伴侣 —— 一个直接跑在硬件上的 AI Agent。**
+
+简化硬件集成，解锁无限控制可能。
+
+[![Release](https://img.shields.io/github/v/release/tuya/TClaw?style=flat-square&color=1f6feb)](https://github.com/tuya/TClaw/releases/latest)
+[![License](https://img.shields.io/github/license/tuya/TClaw?style=flat-square&color=1f6feb)](LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/tuya/TClaw/check-build.yml?branch=master&style=flat-square&label=build)](https://github.com/tuya/TClaw/actions/workflows/check-build.yml)
+[![Language](https://img.shields.io/github/languages/top/tuya/TClaw?style=flat-square&color=1f6feb)](https://github.com/tuya/TClaw)
+
+[![Platforms](https://img.shields.io/badge/platforms-T5AI%20%C2%B7%20ESP32--S3%20%C2%B7%20Raspberry%20Pi%20%C2%B7%20Linux-1f6feb?style=flat-square)](#支持的硬件)
+[![Docs](https://img.shields.io/badge/docs-tuyaopen.ai-1f6feb?style=flat-square)](https://tuyaopen.ai/zh/docs/tclaw)
+[![Forum](https://img.shields.io/badge/forum-discourse-1f6feb?style=flat-square)](https://forum-tuyaopen.discourse.group/)
+
+[**快速开始**](#-快速开始) · [**文档**](https://tuyaopen.ai/zh/docs/tclaw) · [**支持的硬件**](#支持的硬件) · [**技能开发**](#-技能skills开发) · [**问题反馈**](https://github.com/tuya/TClaw/issues)
+
+[English](README.md) · **中文**
+
+</div>
+
+> [!WARNING]
+> **🚧 积极开发中** —— 项目处于高强度开发阶段，随时可能出现问题。现在运行可能影响最终体验。遇到任何问题请提 Issue。
 
 > **Ducky** —— TuyaOpen 的硬件吉祥物 —— 在每一块板子上运行 Claw。
 > *（前身为 DuckyClaw。）*
@@ -18,13 +42,6 @@ TClaw 是基于 TuyaOpen C SDK 构建的硬件导向 AI Agent。它在边缘设�
 ---
 
 本项目基于 TuyaOpen C SDK 构建，支持跨 ARM Cortex-M、ARM Cortex-A 乃至 x64 PC 的灵活部署，并提供丰富的即用型硬件驱动和 API。接入新硬件和外设如同搭积木般简单（传感器、显示屏、麦克风扬声器、摄像头，乃至 IoT 云接入）。
-
-![GitHub Repo Banner](https://images.tuyacn.com/fe-static/docs/img/cc7ba9a9-6dd3-4569-aed7-d5694191e659.png)
-
-**你的自主 AI 伴侣。** 简化硬件集成，解锁无限控制可能。
-
-> [!WARNING]
-> **🚧 积极开发中** —— 项目处于高强度开发阶段，随时可能出现问题。现在运行可能影响最终体验。遇到任何问题请提 Issue。
 
 
 ## ❓ 为什么选择 TClaw？

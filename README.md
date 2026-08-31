@@ -1,6 +1,30 @@
+<div align="center">
+
+<img src="https://images.tuyacn.com/fe-static/docs/img/cc7ba9a9-6dd3-4569-aed7-d5694191e659.png" alt="TClaw" width="100%">
+
 # TClaw
 
-**English** | [中文](README_zh.md)
+**Your autonomous AI companion — an AI agent that runs on the hardware itself.**
+
+Simplify hardware integration. Unlock infinite control possibilities.
+
+[![Release](https://img.shields.io/github/v/release/tuya/TClaw?style=flat-square&color=1f6feb)](https://github.com/tuya/TClaw/releases/latest)
+[![License](https://img.shields.io/github/license/tuya/TClaw?style=flat-square&color=1f6feb)](LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/tuya/TClaw/check-build.yml?branch=master&style=flat-square&label=build)](https://github.com/tuya/TClaw/actions/workflows/check-build.yml)
+[![Language](https://img.shields.io/github/languages/top/tuya/TClaw?style=flat-square&color=1f6feb)](https://github.com/tuya/TClaw)
+
+[![Platforms](https://img.shields.io/badge/platforms-T5AI%20%C2%B7%20ESP32--S3%20%C2%B7%20Raspberry%20Pi%20%C2%B7%20Linux-1f6feb?style=flat-square)](#deployable-to-hardware)
+[![Docs](https://img.shields.io/badge/docs-tuyaopen.ai-1f6feb?style=flat-square)](https://tuyaopen.ai/docs/tclaw)
+[![Forum](https://img.shields.io/badge/forum-discourse-1f6feb?style=flat-square)](https://forum-tuyaopen.discourse.group/)
+
+[**Quick Start**](#-quick-start) · [**Documentation**](https://tuyaopen.ai/docs/tclaw) · [**Supported Boards**](#deployable-to-hardware) · [**Skills**](#-skills-development) · [**Issues**](https://github.com/tuya/TClaw/issues)
+
+**English** · [中文](README_zh.md)
+
+</div>
+
+> [!WARNING]
+> **🚧 Under Active Development** — This project is in heavy development and things will break. Running it now may spoil the experience we're building for you. Please visit or open Issues if you encounter any problem.
 
 > **Ducky** — TuyaOpen's hardware mascot — runs the Claw on every board.
 > *(Formerly known as DuckyClaw.)*
@@ -18,13 +42,6 @@ TClaw is a hardware-oriented AI agent built on the TuyaOpen C SDK. It runs a Cla
 ---
 
 This project is built on top of the TuyaOpen C SDK, which offers flexible cross ARM Cortex-M and ARM Cortex-A, and even x64 PC deployments. It also offers a wide variety of ready-to-use hardware drivers and APIs, making integrating new hardware and peripherals as easy as building blocks (sensors, displays, speaker-mic audio, cameras, IoT cloud integrations).
-
-![GitHub Repo Banner](https://images.tuyacn.com/fe-static/docs/img/cc7ba9a9-6dd3-4569-aed7-d5694191e659.png)
-
-**Your autonomous AI companion.** Simplify Hardware Integration, Unlock Infinite Control Possibilities
-
-> [!WARNING]
-> **🚧 Under Active Development** — This project is in heavy development and things will break. Running it now may spoil the experience we're building for you. Please visit or open Issues if you encounter any problem.
 
 
 ## ❓ Why TClaw?
