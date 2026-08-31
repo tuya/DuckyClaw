@@ -168,17 +168,14 @@ TClaw 架构将本地设备 Agent 和云端 Agent 统一在同一个系统下。
   [涂鸦 IoT 平台 → Open SDK](https://platform.tuya.com/purchase/index?type=6) 获取。
   每台设备一份；TuyaOS 授权码无法使用。
 
-**3. 烧录** —— 让板子进入下载模式后，用 [tyutool](https://tuyaopen.ai/zh/docs/tyutool)：
+**3. 烧录** —— 让板子进入下载模式，然后用 [tyutool](https://tuyaopen.ai/zh/docs/tyutool)
+桌面版：在**固件烧录**页面选芯片（`t5ai` 或 `esp32s3`）、选串口、选中 `.bin`，
+点击 **Flash**。
+
+**4. 配置** —— Release 镜像不含凭证，烧录后用 115200 波特率通过串口补上。
+tyutool 的**串口调试**页面可直接当终端用：
 
 ```shell
-tyutool write -d t5ai -f TClaw_TUYA_T5AI_CORE_QIO_1.0.0.bin -p /dev/ttyACM0
-```
-
-**4. 配置** —— Release 镜像不含凭证，烧录后用 115200 波特率通过串口补上：
-
-```shell
-tyutool monitor -d t5ai -b 115200
-
 cfg_set_product_id <product_id>
 cfg_set_auth <uuid> <authkey>
 cfg_set_channel_mode telegram      # telegram | discord | feishu | weixin | qqbot | OFF

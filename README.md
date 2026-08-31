@@ -172,19 +172,15 @@ image that works on a blank board.
   [Tuya IoT Platform → Open SDK](https://platform.tuya.com/purchase/index?type=6).
   One license per device; TuyaOS licenses will not work.
 
-**3. Flash** with [tyutool](https://tuyaopen.ai/docs/tyutool), after putting the
-board into download mode:
-
-```shell
-tyutool write -d t5ai -f TClaw_TUYA_T5AI_CORE_QIO_1.0.0.bin -p /dev/ttyACM0
-```
+**3. Flash** with the [tyutool](https://tuyaopen.ai/docs/tyutool) desktop app:
+put the board into download mode, then on the **Firmware Flash** page pick the
+chip (`t5ai` or `esp32s3`), pick the serial port, select the `.bin`, and click
+**Flash**.
 
 **4. Configure** over the serial console at 115200 baud — released builds ship
-without credentials:
+without credentials. tyutool's **Serial Debug** page works as the terminal:
 
 ```shell
-tyutool monitor -d t5ai -b 115200
-
 cfg_set_product_id <product_id>
 cfg_set_auth <uuid> <authkey>
 cfg_set_channel_mode telegram      # telegram | discord | feishu | weixin | qqbot | OFF
