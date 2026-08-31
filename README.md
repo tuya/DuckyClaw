@@ -1,5 +1,7 @@
 # TClaw
 
+**English** | [中文](README_zh.md)
+
 > **Ducky** — TuyaOpen's hardware mascot — runs the Claw on every board.
 > *(Formerly known as DuckyClaw.)*
 
@@ -130,7 +132,103 @@ The TClaw architecture combines local device agents and cloud agents under a uni
 
 ## 🚀 Quick Start
 
-### Clone
+Two ways in. **Flash a prebuilt firmware** if you just want a working device — no
+toolchain, no build. **Build from source** if you want to change the code.
+
+### Option A — Flash a Prebuilt Firmware
+
+#### 1. Download the firmware
+
+Grab the image for your board from the [Releases page](https://github.com/tuya/TClaw/releases/latest).
+Assets are named `TClaw_<BOARD>_QIO_<version>.bin`:
+
+| Board | Release asset |
+|-------|---------------|
+| Tuya T5AI dev board (3.5" LCD + camera) | `TClaw_TUYA_T5AI_BOARD_LCD_3.5_CAMERA_QIO_*.bin` |
+| Tuya T5AI dev board (no SD card / camera) | `TClaw_TUYA_T5AI_BOARD_LCD_3.5_CAMERA.NO_SDCARD_CAMERA._QIO_*.bin` |
+| Tuya T5AI Core | `TClaw_TUYA_T5AI_CORE_QIO_*.bin` |
+| ATK T5AI Mini (2.4" LCD + camera) | `TClaw_ATK_T5AI_MINI_BOARD_2.4LCD_CAMERA_QIO_*.bin` |
+| Waveshare T5AI Touch AMOLED 1.75" | `TClaw_WAVESHARE_T5AI_TOUCH_AMOLED_1_75_QIO_*.bin` |
+| ESP32-S3 (bread compact WiFi) | `TClaw_ESP32S3_BREAD_COMPACT_WIFI_QIO_*.bin` |
+
+`QIO` images are full flash images — bootloader and application together — so
+they work for a first-time flash on a blank board.
+
+Verify the download against `SHA256SUMS.txt` from the same release:
+
+```shell
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+> Raspberry Pi 5 and DshanPi A1 are Linux targets — they run a native binary
+> rather than flashed firmware. Follow the
+> [Raspberry Pi guide](https://tuyaopen.ai/docs/tclaw/ducky-quick-start-raspberry-pi-5) instead.
+
+#### 2. Install tyutool
+
+[tyutool](https://tuyaopen.ai/docs/tyutool/) is Tuya's flashing tool, with prebuilt
+GUI and CLI builds for Windows, macOS, and Linux. See
+[Getting Started](https://tuyaopen.ai/docs/tyutool/getting-started) for install steps
+and per-OS caveats (macOS serial permissions, Linux blank-window workaround).
+
+#### 3. Flash
+
+Connect the board over USB-to-serial and put it into download mode — how you do
+that is board-specific, so check your board's manual.
+
+Then, in the tyutool GUI: pick the chip (`t5ai` or `esp32s3`), pick the serial
+port, select the `.bin` you downloaded, and click **Start**. The
+[firmware flash guide](https://tuyaopen.ai/docs/tyutool/flash) covers each field.
+
+The CLI equivalent:
+
+```shell
+# T5AI boards (chip id `t5ai`, default baud 921600)
+tyutool write -d t5ai -f TClaw_TUYA_T5AI_CORE_QIO_1.0.0.bin -p /dev/ttyACM0
+
+# ESP32-S3 (chip id `esp32s3`, default baud 460800)
+tyutool write -d esp32s3 -f TClaw_ESP32S3_BREAD_COMPACT_WIFI_QIO_1.0.0.bin -p /dev/ttyUSB0
+```
+
+#### 4. Configure over the serial CLI
+
+A released build ships without credentials, so configure the device over the
+serial console after flashing. Open the port at **115200 baud** with any
+terminal (tyutool's [serial debug](https://tuyaopen.ai/docs/tyutool/serial-debug)
+panel, `screen`, `minicom`, `picocom`) and press Enter to get a prompt.
+
+`help` lists every command. The ones you normally need:
+
+```shell
+# Tuya cloud credentials (required to come online)
+cfg_set_product_id <product_id>
+cfg_set_auth <uuid> <authkey>
+
+# Pick one IM channel and set its token
+cfg_set_channel_mode telegram      # telegram | discord | feishu | weixin | qqbot | OFF
+cfg_set_tg_token <bot_token>
+
+# Review what is actually in effect, then reboot to apply
+cfg_show
+```
+
+> Tuya credentials can also be written without the CLI:
+> `tyutool authorize -p /dev/ttyACM0 --uuid <uuid> --authkey <authkey>` stores
+> them in the same KV storage.
+
+Other commands: `cfg_set_dc_token` / `cfg_set_dc_channel` (Discord),
+`cfg_set_fs_appid` / `cfg_set_fs_appsecret` / `cfg_set_fs_allow` (Feishu),
+`cfg_set_qq_appid` / `cfg_set_qq_secret` (QQ Bot), `cfg_set_gw_host` /
+`cfg_set_gw_port` / `cfg_set_gw_token` (OpenClaw gateway), `cfg_set_device_id`,
+`cfg_set_proxy` / `cfg_clear_proxy` (outbound proxy), and `cfg_reset` to clear
+every override.
+
+> Settings are stored in the device's KV store and override the values compiled
+> into the firmware. **They take effect after a reconnect or reboot.**
+
+### Option B — Build from Source
+
+#### Clone
 
 ```shell
 git clone https://github.com/tuya/TClaw.git
@@ -138,7 +236,7 @@ cd TClaw
 git submodule update --init
 ```
 
-### Configure Secrets
+#### Configure Secrets
 
 ```shell
 cp include/tuya_app_config_secrets.h.example include/tuya_app_config_secrets.h
@@ -148,7 +246,7 @@ cp include/tuya_app_config_secrets.h.example include/tuya_app_config_secrets.h
 #   CLAW_WS_AUTH_TOKEN, OPENCLAW_GATEWAY_* (gateway config, if using)
 ```
 
-### Select a Board Config
+#### Select a Board Config
 
 ```shell
 # Tuya T5AI dev board (3.5" LCD + camera)
@@ -163,7 +261,7 @@ cp config/TUYA_T5AI_BOARD_LCD_3.5_CAMERA.config app_default.config
 # cp config/ESP32S3_BREAD_COMPACT_WIFI.config app_default.config
 ```
 
-### Build
+#### Build
 
 ```shell
 # Initialize TuyaOpen environment (creates .venv, sets up toolchains)

@@ -1,5 +1,7 @@
 # TClaw
 
+[English](README.md) | **中文**
+
 > **Ducky** —— TuyaOpen 的硬件吉祥物 —— 在每一块板子上运行 Claw。
 > *（前身为 DuckyClaw。）*
 
@@ -130,7 +132,96 @@ TClaw 架构将本地设备 Agent 和云端 Agent 统一在同一个系统下。
 
 ## 🚀 快速开始
 
-### 克隆仓库
+两条路线。只想让设备先跑起来，就**烧录预编译固件**——不需要工具链，不需要编译；
+想改代码，就**从源码构建**。
+
+### 方式一 —— 烧录预编译固件
+
+#### 1. 下载固件
+
+在 [Releases 页面](https://github.com/tuya/TClaw/releases/latest)下载对应板型的镜像，
+文件名格式为 `TClaw_<板型>_QIO_<版本>.bin`：
+
+| 板型 | Release 文件 |
+|------|-------------|
+| Tuya T5AI 开发板（3.5" LCD + 摄像头） | `TClaw_TUYA_T5AI_BOARD_LCD_3.5_CAMERA_QIO_*.bin` |
+| Tuya T5AI 开发板（无 SD 卡 / 摄像头） | `TClaw_TUYA_T5AI_BOARD_LCD_3.5_CAMERA.NO_SDCARD_CAMERA._QIO_*.bin` |
+| Tuya T5AI Core | `TClaw_TUYA_T5AI_CORE_QIO_*.bin` |
+| ATK T5AI Mini（2.4" LCD + 摄像头） | `TClaw_ATK_T5AI_MINI_BOARD_2.4LCD_CAMERA_QIO_*.bin` |
+| Waveshare T5AI Touch AMOLED 1.75" | `TClaw_WAVESHARE_T5AI_TOUCH_AMOLED_1_75_QIO_*.bin` |
+| ESP32-S3（bread compact WiFi） | `TClaw_ESP32S3_BREAD_COMPACT_WIFI_QIO_*.bin` |
+
+`QIO` 是整片烧录镜像（bootloader + 应用一起），空板首次烧录直接用它即可。
+
+用同一个 Release 里的 `SHA256SUMS.txt` 校验：
+
+```shell
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+> Raspberry Pi 5 和 DshanPi A1 是 Linux 目标，跑的是原生可执行程序而非烧录固件，
+> 请改看 [Raspberry Pi 指南](https://tuyaopen.ai/zh/docs/tclaw/ducky-quick-start-raspberry-pi-5)。
+
+#### 2. 安装 tyutool
+
+[tyutool](https://tuyaopen.ai/zh/docs/tyutool/) 是涂鸦的烧录工具，提供 Windows、
+macOS、Linux 的 GUI 与 CLI 预编译版本。安装步骤和各平台注意事项（macOS 串口权限、
+Linux 空白窗口）见 [快速开始](https://tuyaopen.ai/zh/docs/tyutool/getting-started)。
+
+#### 3. 烧录
+
+用 USB 转串口连接开发板，并让其进入下载模式——进入方式因板而异，请查阅对应板卡手册。
+
+在 tyutool 图形界面中：选择芯片（`t5ai` 或 `esp32s3`）、选择串口、选中刚下载的
+`.bin`，点击 **Start**。各字段含义见
+[固件烧录说明](https://tuyaopen.ai/zh/docs/tyutool/flash)。
+
+命令行等价写法：
+
+```shell
+# T5AI 系列（芯片标识 `t5ai`，默认波特率 921600）
+tyutool write -d t5ai -f TClaw_TUYA_T5AI_CORE_QIO_1.0.0.bin -p /dev/ttyACM0
+
+# ESP32-S3（芯片标识 `esp32s3`，默认波特率 460800）
+tyutool write -d esp32s3 -f TClaw_ESP32S3_BREAD_COMPACT_WIFI_QIO_1.0.0.bin -p /dev/ttyUSB0
+```
+
+#### 4. 通过串口 CLI 配置
+
+Release 固件不包含任何凭证，烧录后需要通过串口配置。用任意终端
+（tyutool 的[串口调试](https://tuyaopen.ai/zh/docs/tyutool/serial-debug)面板、
+`screen`、`minicom`、`picocom`）以 **115200 波特率**打开串口，回车即可看到提示符。
+
+`help` 会列出全部命令，常用的是这几条：
+
+```shell
+# 涂鸦云凭证（设备上线必需）
+cfg_set_product_id <product_id>
+cfg_set_auth <uuid> <authkey>
+
+# 选择一个 IM 通道并设置其 Token
+cfg_set_channel_mode telegram      # telegram | discord | feishu | weixin | qqbot | OFF
+cfg_set_tg_token <bot_token>
+
+# 查看当前实际生效的配置，然后重启使其生效
+cfg_show
+```
+
+> 涂鸦凭证也可以不经 CLI 写入：
+> `tyutool authorize -p /dev/ttyACM0 --uuid <uuid> --authkey <authkey>`
+> 会写进同一份 KV 存储。
+
+其他命令：`cfg_set_dc_token` / `cfg_set_dc_channel`（Discord）、
+`cfg_set_fs_appid` / `cfg_set_fs_appsecret` / `cfg_set_fs_allow`（飞书）、
+`cfg_set_qq_appid` / `cfg_set_qq_secret`（QQ 机器人）、`cfg_set_gw_host` /
+`cfg_set_gw_port` / `cfg_set_gw_token`（OpenClaw 网关）、`cfg_set_device_id`、
+`cfg_set_proxy` / `cfg_clear_proxy`（出站代理），以及清除全部覆盖的 `cfg_reset`。
+
+> 配置保存在设备的 KV 存储中，优先级高于编译进固件的值。**重新连接或重启后生效。**
+
+### 方式二 —— 从源码构建
+
+#### 克隆仓库
 
 ```shell
 git clone https://github.com/tuya/TClaw.git
@@ -138,7 +229,7 @@ cd TClaw
 git submodule update --init
 ```
 
-### 配置密钥
+#### 配置密钥
 
 ```shell
 cp include/tuya_app_config_secrets.h.example include/tuya_app_config_secrets.h
@@ -148,7 +239,7 @@ cp include/tuya_app_config_secrets.h.example include/tuya_app_config_secrets.h
 #   CLAW_WS_AUTH_TOKEN, OPENCLAW_GATEWAY_*（网关配置，如需使用）
 ```
 
-### 选择板型配置
+#### 选择板型配置
 
 ```shell
 # Tuya T5AI 开发板（3.5" LCD + 摄像头）
@@ -163,7 +254,7 @@ cp config/TUYA_T5AI_BOARD_LCD_3.5_CAMERA.config app_default.config
 # cp config/ESP32S3_BREAD_COMPACT_WIFI.config app_default.config
 ```
 
-### 编译
+#### 编译
 
 ```shell
 # 初始化 TuyaOpen 环境（创建 .venv，配置工具链）
