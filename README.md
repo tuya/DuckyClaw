@@ -14,10 +14,10 @@ Simplify hardware integration. Unlock infinite control possibilities.
 [![Language](https://img.shields.io/github/languages/top/tuya/TClaw?style=flat-square&color=1f6feb)](https://github.com/tuya/TClaw)
 
 [![Platforms](https://img.shields.io/badge/platforms-T5AI%20%C2%B7%20ESP32--S3%20%C2%B7%20Raspberry%20Pi%20%C2%B7%20Linux-1f6feb?style=flat-square)](#deployable-to-hardware)
-[![Docs](https://img.shields.io/badge/docs-tuyaopen.ai-1f6feb?style=flat-square)](https://tuyaopen.ai/docs/tclaw)
+[![Docs](https://img.shields.io/badge/docs-tuyaopen.ai-1f6feb?style=flat-square)](https://tuyaopen.ai/tclaw)
 [![Forum](https://img.shields.io/badge/forum-discourse-1f6feb?style=flat-square)](https://forum-tuyaopen.discourse.group/)
 
-[**Quick Start**](#-quick-start) · [**Documentation**](https://tuyaopen.ai/docs/tclaw) · [**Supported Boards**](#deployable-to-hardware) · [**Skills**](#-skills-development) · [**Issues**](https://github.com/tuya/TClaw/issues)
+[**Quick Start**](#-quick-start) · [**Documentation**](https://tuyaopen.ai/tclaw) · [**Supported Boards**](#deployable-to-hardware) · [**Skills**](#-skills-development) · [**Issues**](https://github.com/tuya/TClaw/issues)
 
 **English** · [中文](README_zh.md)
 
@@ -171,8 +171,8 @@ image that works on a blank board.
 
 **3. Flash** with the [tyutool](https://tuyaopen.ai/docs/tyutool) desktop app:
 put the board into download mode, then on the **Firmware Flash** page pick the
-chip (`t5ai` or `esp32s3`), pick the serial port, select the `.bin`, and click
-**Flash**.
+serial port, confirm the auto-filled chip (`t5ai` or `esp32s3`), select the
+`.bin`, and click **Flash**.
 
 **4. Configure** over the serial console at 115200 baud — released builds ship
 without credentials. tyutool's **Serial Debug** page works as the terminal:

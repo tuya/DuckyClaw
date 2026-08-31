@@ -14,10 +14,10 @@
 [![Language](https://img.shields.io/github/languages/top/tuya/TClaw?style=flat-square&color=1f6feb)](https://github.com/tuya/TClaw)
 
 [![Platforms](https://img.shields.io/badge/platforms-T5AI%20%C2%B7%20ESP32--S3%20%C2%B7%20Raspberry%20Pi%20%C2%B7%20Linux-1f6feb?style=flat-square)](#支持的硬件)
-[![Docs](https://img.shields.io/badge/docs-tuyaopen.ai-1f6feb?style=flat-square)](https://tuyaopen.ai/zh/docs/tclaw)
+[![Docs](https://img.shields.io/badge/docs-tuyaopen.ai-1f6feb?style=flat-square)](https://tuyaopen.ai/zh/tclaw)
 [![Forum](https://img.shields.io/badge/forum-discourse-1f6feb?style=flat-square)](https://forum-tuyaopen.discourse.group/)
 
-[**快速开始**](#-快速开始) · [**文档**](https://tuyaopen.ai/zh/docs/tclaw) · [**支持的硬件**](#支持的硬件) · [**技能开发**](#-技能skills开发) · [**问题反馈**](https://github.com/tuya/TClaw/issues)
+[**快速开始**](#-快速开始) · [**文档**](https://tuyaopen.ai/zh/tclaw) · [**支持的硬件**](#支持的硬件) · [**技能开发**](#-技能skills开发) · [**问题反馈**](https://github.com/tuya/TClaw/issues)
 
 [English](README.md) · **中文**
 
@@ -166,8 +166,8 @@ TClaw 架构将本地设备 Agent 和云端 Agent 统一在同一个系统下。
   每台设备一份；TuyaOS 授权码无法使用。
 
 **3. 烧录** —— 让板子进入下载模式，然后用 [tyutool](https://tuyaopen.ai/zh/docs/tyutool)
-桌面版：在**固件烧录**页面选芯片（`t5ai` 或 `esp32s3`）、选串口、选中 `.bin`，
-点击 **Flash**。
+桌面版：在**固件烧录**页面选串口、确认自动填入的芯片（`t5ai` 或 `esp32s3`）、
+选中 `.bin`，点击 **Flash**。
 
 **4. 配置** —— Release 镜像不含凭证，烧录后用 115200 波特率通过串口补上。
 tyutool 的**串口调试**页面可直接当终端用：
