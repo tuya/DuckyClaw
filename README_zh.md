@@ -140,7 +140,8 @@ TClaw 架构将本地设备 Agent 和云端 Agent 统一在同一个系统下。
 #### 1. 下载固件
 
 在 [Releases 页面](https://github.com/tuya/TClaw/releases/latest)下载对应板型的镜像，
-文件名格式为 `TClaw_<板型>_QIO_<版本>.bin`：
+文件名格式为 `TClaw_<板型>_QIO_<版本>.bin`，其中 `<版本>` 是编译进固件的工程
+版本号（`1.0.0`），不是 Release 的 tag：
 
 | 板型 | Release 文件 |
 |------|-------------|
@@ -164,7 +165,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 
 #### 2. 安装 tyutool
 
-[tyutool](https://tuyaopen.ai/zh/docs/tyutool/) 是涂鸦的烧录工具，提供 Windows、
+[tyutool](https://tuyaopen.ai/zh/docs/tyutool) 是涂鸦的烧录工具，提供 Windows、
 macOS、Linux 的 GUI 与 CLI 预编译版本。安装步骤和各平台注意事项（macOS 串口权限、
 Linux 空白窗口）见 [快速开始](https://tuyaopen.ai/zh/docs/tyutool/getting-started)。
 
@@ -173,7 +174,7 @@ Linux 空白窗口）见 [快速开始](https://tuyaopen.ai/zh/docs/tyutool/gett
 用 USB 转串口连接开发板，并让其进入下载模式——进入方式因板而异，请查阅对应板卡手册。
 
 在 tyutool 图形界面中：选择芯片（`t5ai` 或 `esp32s3`）、选择串口、选中刚下载的
-`.bin`，点击 **Start**。各字段含义见
+`.bin`，点击 **Flash**。各字段含义见
 [固件烧录说明](https://tuyaopen.ai/zh/docs/tyutool/flash)。
 
 命令行等价写法：
@@ -192,7 +193,7 @@ Release 固件不包含任何凭证，烧录后需要通过串口配置。用任
 （tyutool 的[串口调试](https://tuyaopen.ai/zh/docs/tyutool/serial-debug)面板、
 `screen`、`minicom`、`picocom`）以 **115200 波特率**打开串口，回车即可看到提示符。
 
-`help` 会列出全部命令，常用的是这几条：
+`help` 会列出各个 `cfg_*` 命令，常用的是这几条：
 
 ```shell
 # 涂鸦云凭证（设备上线必需）
@@ -208,13 +209,14 @@ cfg_show
 ```
 
 > 涂鸦凭证也可以不经 CLI 写入：
-> `tyutool authorize -p /dev/ttyACM0 --uuid <uuid> --authkey <authkey>`
+> `tyutool authorize -d t5ai -p /dev/ttyACM0 --uuid <uuid> --authkey <authkey>`
 > 会写进同一份 KV 存储。
 
 其他命令：`cfg_set_dc_token` / `cfg_set_dc_channel`（Discord）、
 `cfg_set_fs_appid` / `cfg_set_fs_appsecret` / `cfg_set_fs_allow`（飞书）、
 `cfg_set_qq_appid` / `cfg_set_qq_secret`（QQ 机器人）、`cfg_set_gw_host` /
-`cfg_set_gw_port` / `cfg_set_gw_token`（OpenClaw 网关）、`cfg_set_device_id`、
+`cfg_set_gw_port` / `cfg_set_gw_token`（OpenClaw 网关）、`cfg_set_ws_token`、
+`cfg_set_device_id`、
 `cfg_set_proxy` / `cfg_clear_proxy`（出站代理），以及清除全部覆盖的 `cfg_reset`。
 
 > 配置保存在设备的 KV 存储中，优先级高于编译进固件的值。**重新连接或重启后生效。**

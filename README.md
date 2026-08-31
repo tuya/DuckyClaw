@@ -140,7 +140,8 @@ toolchain, no build. **Build from source** if you want to change the code.
 #### 1. Download the firmware
 
 Grab the image for your board from the [Releases page](https://github.com/tuya/TClaw/releases/latest).
-Assets are named `TClaw_<BOARD>_QIO_<version>.bin`:
+Assets are named `TClaw_<BOARD>_QIO_<version>.bin`, where `<version>` is the
+project version baked into the firmware (`1.0.0`) rather than the release tag:
 
 | Board | Release asset |
 |-------|---------------|
@@ -166,7 +167,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 
 #### 2. Install tyutool
 
-[tyutool](https://tuyaopen.ai/docs/tyutool/) is Tuya's flashing tool, with prebuilt
+[tyutool](https://tuyaopen.ai/docs/tyutool) is Tuya's flashing tool, with prebuilt
 GUI and CLI builds for Windows, macOS, and Linux. See
 [Getting Started](https://tuyaopen.ai/docs/tyutool/getting-started) for install steps
 and per-OS caveats (macOS serial permissions, Linux blank-window workaround).
@@ -177,7 +178,7 @@ Connect the board over USB-to-serial and put it into download mode — how you d
 that is board-specific, so check your board's manual.
 
 Then, in the tyutool GUI: pick the chip (`t5ai` or `esp32s3`), pick the serial
-port, select the `.bin` you downloaded, and click **Start**. The
+port, select the `.bin` you downloaded, and click **Flash**. The
 [firmware flash guide](https://tuyaopen.ai/docs/tyutool/flash) covers each field.
 
 The CLI equivalent:
@@ -197,7 +198,7 @@ serial console after flashing. Open the port at **115200 baud** with any
 terminal (tyutool's [serial debug](https://tuyaopen.ai/docs/tyutool/serial-debug)
 panel, `screen`, `minicom`, `picocom`) and press Enter to get a prompt.
 
-`help` lists every command. The ones you normally need:
+`help` lists the `cfg_*` commands. The ones you normally need:
 
 ```shell
 # Tuya cloud credentials (required to come online)
@@ -213,13 +214,14 @@ cfg_show
 ```
 
 > Tuya credentials can also be written without the CLI:
-> `tyutool authorize -p /dev/ttyACM0 --uuid <uuid> --authkey <authkey>` stores
-> them in the same KV storage.
+> `tyutool authorize -d t5ai -p /dev/ttyACM0 --uuid <uuid> --authkey <authkey>`
+> stores them in the same KV storage.
 
 Other commands: `cfg_set_dc_token` / `cfg_set_dc_channel` (Discord),
 `cfg_set_fs_appid` / `cfg_set_fs_appsecret` / `cfg_set_fs_allow` (Feishu),
 `cfg_set_qq_appid` / `cfg_set_qq_secret` (QQ Bot), `cfg_set_gw_host` /
-`cfg_set_gw_port` / `cfg_set_gw_token` (OpenClaw gateway), `cfg_set_device_id`,
+`cfg_set_gw_port` / `cfg_set_gw_token` (OpenClaw gateway), `cfg_set_ws_token`,
+`cfg_set_device_id`,
 `cfg_set_proxy` / `cfg_clear_proxy` (outbound proxy), and `cfg_reset` to clear
 every override.
 
