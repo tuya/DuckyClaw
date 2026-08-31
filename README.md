@@ -23,6 +23,9 @@ Simplify hardware integration. Unlock infinite control possibilities.
 
 </div>
 
+> [!WARNING]
+> **🚧 Under Active Development** — This project is in heavy development and things will break. Running it now may spoil the experience we're building for you. Please visit or open Issues if you encounter any problem.
+
 > **Ducky** — TuyaOpen's hardware mascot — runs the Claw on every board.
 > *(Formerly known as DuckyClaw.)*
 
